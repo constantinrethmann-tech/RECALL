@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+/* KAIROS design system: near-black hull, one ion-blue accent, thin seams. */
+@theme {
+  --color-void: #06070a;
+  --color-hull: #0b0d11;
+  --color-hull-2: #101319;
+  --color-hull-3: #161a21;
+  --color-seam: #191d25;
+  --color-seam-2: #272c36;
+  --color-seam-3: #3a404b;
+  --color-dust: #747c8a;
+  --color-mist: #a7aeba;
+  --color-frost: #e9ecf1;
+  --color-ion: #8fb3ff;
+  --color-ion-2: #4f74c4;
+  --color-flare: #f0b45e;
+  --color-up: #46d995;
+  --color-down: #f0616d;
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@theme inline {
+  --font-display: var(--font-michroma), "Eurostile", "Arial Black", sans-serif;
+  --font-sans: var(--font-instrument), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-martian), ui-monospace, Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html {
+    background: var(--color-void);
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-void);
+    color: var(--color-frost);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-ion) 35%, transparent);
+  }
+  :focus-visible {
+    outline: 1px solid var(--color-ion);
+    outline-offset: 2px;
+  }
+}
+
+@utility eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-dust);
+}
+
+@utility pb-safe {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Card text (markdown). */
+.md {
+  overflow-wrap: anywhere;
+}
+.md > * + * {
+  margin-top: 0.7em;
+}
+.md strong {
+  font-weight: 600;
+  color: #fff;
+}
+.md em {
+  color: var(--color-mist);
+}
+.md ul,
+.md ol {
+  padding-left: 1.3em;
+}
+.md ul {
+  list-style: none;
+}
+.md ul > li {
+  position: relative;
+}
+.md ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.95em;
+  top: 0.68em;
+  width: 5px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--color-ion);
+  opacity: 0.8;
+}
+.md ol {
+  list-style: decimal;
+}
+.md ol > li::marker {
+  color: var(--color-ion);
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+}
+.md li + li {
+  margin-top: 0.3em;
+}
+.md code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-hull-3);
+  border: 1px solid var(--color-seam-2);
+  border-radius: 6px;
+  padding: 0.05em 0.35em;
+}
+.md h1,
+.md h2,
+.md h3 {
+  font-weight: 600;
+  color: #fff;
+  font-size: 1.05em;
+}
+.md a {
+  color: var(--color-ion);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.md blockquote {
+  border-left: 2px solid var(--color-seam-3);
+  padding-left: 0.8em;
+  color: var(--color-mist);
+}
+.md table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.md th,
+.md td {
+  border: 1px solid var(--color-seam-2);
+  padding: 0.4em 0.6em;
+  text-align: left;
+  vertical-align: top;
+}
+.md th {
+  background: var(--color-hull-2);
+  font-weight: 600;
+}
+.md hr {
+  border-color: var(--color-seam-2);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
