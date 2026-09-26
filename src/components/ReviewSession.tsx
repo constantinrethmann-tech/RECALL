@@ -1,42 +1,52 @@
 "use client";
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import type { Card, IPreview, ReviewLog } from "ts-fsrs";
-import { formatInterval, GRADES, makeScheduler, Rating, State, type Grade } from "@/lib/fsrs";
-import { afterRating, LEARN_AHEAD_MS, nextLearningDue, pickNext, sessionCounts, type SessionState } from "@/lib/queue";
-import type { StudyCard } from "@/lib/types";
+import type { Card, RecordLogItem, ReviewLog } from "ts-fsrs";
+import { applySlowness, expectedThinkMs, slowness } from "@/lib/effort";
+import { formatInterval, GRADES, makeScheduler, Rating, rowToStudyCard, State, type Grade } from "@/lib/fsrs";
+import { afterRating, cramRequeue, LEARN_AHEAD_MS, nextLearningDue, pickNext, sessionCounts, type SessionState } from "@/lib/queue";
+import type { StudyCard, StudyMode } from "@/lib/types";
+import { CardEditorModal, type EditorResult } from "./CardEditor";
 import { CardImage, ImageZoom } from "./CardImage";
-import { ArrowLeft, Undo } from "./icons";
+import { ArrowLeft, Pencil, Undo } from "./icons";
 import { Markdown } from "./Markdown";
 import { Button, Counts, ErrorNote, IconButton } from "./ui";
 
 export interface ReviewPersistence {
-  record: (cardId: string, next: Card, log: ReviewLog, durationMs: number) => Promise<string>;
+  record: (cardId: string, next: Card, log: ReviewLog, durationMs: number, thinkMs: number | null) => Promise<string>;
   undo: (logId: string, cardId: string, previous: Card) => Promise<void>;
 }
 
 interface Props {
   title: string;
+  mode: StudyMode;
   initial: SessionState;
   dayEnd: Date;
   retention: number;
+  /** Your usual recall time (for the slow-answer signal). */
+  thinkBaselineMs: number;
   /** e.g. "Business Law I · Unit 03 · A. S.A. vs S.L." */
   describe: (card: StudyCard) => string;
-  /** null = practice only, nothing is saved. */
+  /** null = nothing is saved (cram, dev preview). */
   persist: ReviewPersistence | null;
   loadImages: (paths: string[]) => Promise<Map<string, string>>;
+  /** Allow editing cards (E). */
+  editable?: boolean;
   onExit: () => void;
 }
 
 interface HistoryEntry {
   before: SessionState;
   card: StudyCard;
+  /** Whether this rating counted towards "reviewed". */
+  counted: boolean;
   logId: string | null;
-  failed: boolean;
   saving: Promise<void>;
   save: () => Promise<void>;
   retry: () => void;
 }
+
+type Outcomes = Record<Grade, RecordLogItem>;
 
 const MAX_DURATION_MS = 60_000;
 /** Taps on the rating buttons right after "Show answer" are ignored (they sit where that button was). */
@@ -48,14 +58,19 @@ const gradeColor: Record<number, string> = {
   [Rating.Good]: "text-up",
   [Rating.Easy]: "text-ion",
 };
+const cramLabel: Record<number, string> = { [Rating.Again]: "soon", [Rating.Hard]: "later", [Rating.Good]: "done", [Rating.Easy]: "done" };
 
-export function ReviewSession({ title, initial, dayEnd, retention, describe, persist, loadImages, onExit }: Props) {
+export function ReviewSession(props: Props) {
+  const { title, mode, initial, dayEnd, retention, thinkBaselineMs, describe, persist, loadImages, editable, onExit } = props;
+  const cram = mode === "cram";
   const scheduler = useMemo(() => makeScheduler(retention), [retention]);
   const [session, setSession] = useState(initial);
   const [current, setCurrent] = useState<StudyCard | null>(() => pickNext(initial, new Date()));
-  const [preview, setPreview] = useState<{ at: Date; record: IPreview } | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [outcomes, setOutcomes] = useState<{ at: Date; record: Outcomes; thinkMs: number } | null>(null);
   const [images, setImages] = useState<Map<string, string>>(() => new Map());
   const [zoom, setZoom] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -64,29 +79,42 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
 
   const shownAt = useRef(0);
   const revealedAt = useRef(0);
+  const interrupted = useRef(false);
   const history = useRef<HistoryEntry[]>([]);
   const failed = useRef<HistoryEntry[]>([]);
   const chain = useRef<Promise<void>>(Promise.resolve());
   const answerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLElement>(null);
-  const revealed = preview !== null;
+  const requested = useRef(new Set<string>());
 
   // Saves run one after another, in the order they happened.
   const enqueue = useCallback((op: () => Promise<void>) => (chain.current = chain.current.then(op, op)), []);
 
   const show = useCallback((card: StudyCard | null) => {
     setCurrent(card);
-    setPreview(null);
+    setRevealed(false);
+    setOutcomes(null);
     shownAt.current = Date.now();
+    interrupted.current = document.visibilityState === "hidden";
     scrollRef.current?.scrollTo({ top: 0 });
   }, []);
 
+  // Recall time only counts while you're actually looking at the app.
   useEffect(() => {
     shownAt.current = Date.now();
+    const away = () => {
+      interrupted.current = true;
+    };
+    const onVisibility = () => document.visibilityState === "hidden" && away();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", away);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", away);
+    };
   }, []);
 
   // Load (and pre-load) pictures for this card and the next few. Each picture is requested once.
-  const requested = useRef(new Set<string>());
   useEffect(() => {
     const upcoming = [current, ...session.main.slice(0, 4), ...session.learning.slice(0, 2)].filter((c): c is StudyCard => !!c);
     const paths = upcoming.flatMap((c) => [c.frontImage, c.backImage]).filter((p): p is string => !!p && !requested.current.has(p));
@@ -105,7 +133,7 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
   }, [current, session, loadImages]);
 
   // Waiting for a learning card: tick until it's close enough to show.
-  const waitingUntil = !current ? nextLearningDue(session) : null;
+  const waitingUntil = !current && !cram ? nextLearningDue(session) : null;
   useEffect(() => {
     if (!waitingUntil) return;
     const id = setInterval(() => {
@@ -119,32 +147,49 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
     if (!current || revealed) return;
     const at = new Date();
     revealedAt.current = at.getTime();
-    setPreview({ at, record: scheduler.repeat(current.sched, at) });
+    setRevealed(true);
+    if (!cram) {
+      const thinkMs = at.getTime() - shownAt.current;
+      const s = slowness(thinkMs, expectedThinkMs(thinkBaselineMs, current.front, !!current.frontImage), interrupted.current);
+      const record = applySlowness(scheduler.repeat(current.sched, at), current.sched.state, s, at);
+      setOutcomes({ at, record, thinkMs: interrupted.current ? -1 : thinkMs });
+    }
     requestAnimationFrame(() => answerRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  }, [current, revealed, scheduler]);
+  }, [current, revealed, cram, scheduler, thinkBaselineMs]);
 
   const rate = useCallback(
     (grade: Grade) => {
-      if (!current || !preview) return;
+      if (!current || !revealed) return;
       if (Date.now() - revealedAt.current < DOUBLE_TAP_GUARD_MS) return;
-      const item = preview.record[grade];
+
+      if (cram) {
+        const next = cramRequeue(session, current, grade);
+        history.current.push({ before: session, card: current, counted: grade >= Rating.Good, logId: null, saving: Promise.resolve(), save: async () => {}, retry: () => {} });
+        setCanUndo(true);
+        setSession(next);
+        if (grade >= Rating.Good) setReviewed((n) => n + 1);
+        show(pickNext(next, new Date()));
+        return;
+      }
+
+      if (!outcomes) return;
+      const item = outcomes.record[grade];
       const rated: StudyCard = { ...current, sched: item.card };
       const next = afterRating(session, rated, dayEnd);
       const duration = Math.min(Date.now() - shownAt.current, MAX_DURATION_MS);
+      const thinkMs = outcomes.thinkMs >= 0 ? Math.min(outcomes.thinkMs, 600_000) : null;
 
       const entry: HistoryEntry = {
         before: session,
         card: current,
+        counted: true,
         logId: null,
-        failed: false,
         saving: Promise.resolve(),
         save: async () => {
           if (!persist) return;
           try {
-            entry.logId = await persist.record(current.id, item.card, item.log, duration);
-            entry.failed = false;
+            entry.logId = await persist.record(current.id, item.card, item.log, duration, thinkMs);
           } catch (e) {
-            entry.failed = true;
             if (!failed.current.includes(entry)) failed.current.push(entry);
             setSaveError((e as Error).message);
           }
@@ -162,7 +207,7 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
       setReviewed((n) => n + 1);
       show(pickNext(next, new Date()));
     },
-    [current, preview, session, dayEnd, persist, enqueue, show],
+    [current, revealed, cram, outcomes, session, dayEnd, persist, enqueue, show],
   );
 
   const undo = useCallback(() => {
@@ -171,9 +216,9 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
     failed.current = failed.current.filter((f) => f !== entry);
     setCanUndo(history.current.length > 0);
     setSession(entry.before);
-    setReviewed((n) => Math.max(0, n - 1));
+    if (entry.counted) setReviewed((n) => Math.max(0, n - 1));
     show(entry.card);
-    if (persist) {
+    if (persist && !cram) {
       enqueue(async () => {
         await entry.saving;
         if (!entry.logId) return;
@@ -184,7 +229,7 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
         }
       });
     }
-  }, [persist, enqueue, show]);
+  }, [cram, persist, enqueue, show]);
 
   const retrySaves = useCallback(() => {
     setSaveError(null);
@@ -193,10 +238,31 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
     for (const entry of pending) entry.retry();
   }, []);
 
-  // Keyboard: Space/Enter = show answer (then Good, like Anki), 1–4 = rate, Z = undo.
+  // After editing: new text/pictures everywhere in the session, schedule untouched.
+  const finishEdit = useCallback(
+    (result: EditorResult | null) => {
+      const id = editing;
+      setEditing(null);
+      if (!id || !result) return;
+      const replace = (list: StudyCard[]) =>
+        result.deleted ? list.filter((c) => c.id !== id) : list.map((c) => (c.id === id && result.saved ? { ...rowToStudyCard(result.saved), sched: c.sched } : c));
+      const next = { learning: replace(session.learning), main: replace(session.main) };
+      history.current = history.current.filter((h) => h.card.id !== id);
+      setCanUndo(history.current.length > 0);
+      setSession(next);
+      if (result.deleted) show(pickNext(next, new Date()));
+      else if (current?.id === id && result.saved) {
+        setCurrent({ ...rowToStudyCard(result.saved), sched: current.sched });
+        for (const p of [result.saved.front_image, result.saved.back_image]) if (p) requested.current.delete(p);
+      }
+    },
+    [editing, session, current, show],
+  );
+
+  // Keyboard: Space/Enter = show answer (then Good, like Anki), 1–4 = rate, Z = undo, E = edit.
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable='true']")) return;
-    if (e.altKey || e.metaKey || zoom) return;
+    if (e.altKey || e.metaKey || zoom || editing) return;
     if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
       if (!revealed) reveal();
@@ -206,6 +272,9 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
     } else if (e.key.toLowerCase() === "z") {
       e.preventDefault();
       undo();
+    } else if (e.key.toLowerCase() === "e" && !e.ctrlKey && editable && current) {
+      e.preventDefault();
+      setEditing(current.id);
     }
   });
   useEffect(() => {
@@ -215,9 +284,10 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
   }, []);
 
   const counts = sessionCounts(session);
-  const remaining = counts.fresh + counts.learning + counts.review;
+  const remaining = cram ? session.main.length : counts.fresh + counts.learning + counts.review;
   const progress = reviewed + remaining ? reviewed / (reviewed + remaining) : 1;
-  const kind = current?.sched.state === State.New ? "new" : current && current.sched.state !== State.Review ? "learning" : "review";
+  const kind = cram ? "cram" : current?.sched.state === State.New ? "new" : current && current.sched.state !== State.Review ? "learning" : "review";
+  const kindColor = kind === "new" || kind === "cram" ? "text-ion" : kind === "learning" ? "text-flare" : "text-up";
 
   return (
     <div className="flex h-dvh flex-col">
@@ -229,7 +299,16 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
           <div className="min-w-0 flex-1 px-1">
             <p className="truncate text-[14px] text-frost">{title}</p>
           </div>
-          <Counts fresh={counts.fresh} learning={counts.learning} due={counts.review} className="px-2" />
+          {cram ? (
+            <span className="px-2 font-mono text-[12px] text-ion">{remaining} left</span>
+          ) : (
+            <Counts fresh={counts.fresh} learning={counts.learning} due={counts.review} className="px-2" />
+          )}
+          {editable && (
+            <IconButton label="Edit card (E)" onClick={() => current && setEditing(current.id)} disabled={!current}>
+              <Pencil />
+            </IconButton>
+          )}
           <IconButton label="Undo last rating (Z)" onClick={undo} disabled={!canUndo}>
             <Undo />
           </IconButton>
@@ -259,7 +338,7 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
           {current ? (
             <article key={current.id}>
               <p className="eyebrow mb-5 flex flex-wrap items-center gap-x-2 gap-y-1">
-                <span className={kind === "new" ? "text-ion" : kind === "learning" ? "text-flare" : "text-up"}>{kind}</span>
+                <span className={kindColor}>{kind}</span>
                 <span className="text-seam-3">/</span>
                 <span className="normal-case tracking-[0.06em]">{describe(current)}</span>
               </p>
@@ -277,7 +356,7 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
               )}
             </article>
           ) : (
-            <EndScreen reviewed={reviewed} waitingUntil={waitingUntil} now={clock} canUndo={canUndo} onUndo={undo} onExit={onExit} />
+            <EndScreen cram={cram} reviewed={reviewed} waitingUntil={waitingUntil} now={clock} canUndo={canUndo} onUndo={undo} onExit={onExit} />
           )}
         </div>
       </main>
@@ -302,7 +381,7 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
                     className="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border border-seam-2 bg-hull-2 transition-colors hover:border-seam-3 hover:bg-hull-3 active:scale-[.97]"
                   >
                     <span className={`font-mono text-[11px] ${gradeColor[grade]}`}>
-                      {preview && formatInterval(preview.at, preview.record[grade].card.due)}
+                      {cram ? cramLabel[grade] : outcomes && formatInterval(outcomes.at, outcomes.record[grade].card.due)}
                     </span>
                     <span className="text-[14.5px] text-frost">
                       {label}
@@ -317,11 +396,13 @@ export function ReviewSession({ title, initial, dayEnd, retention, describe, per
       )}
 
       {zoom && <ImageZoom url={zoom} onClose={() => setZoom(null)} />}
+      {editing && <CardEditorModal cardId={editing} onDone={finishEdit} />}
     </div>
   );
 }
 
 function EndScreen({
+  cram,
   reviewed,
   waitingUntil,
   now,
@@ -329,6 +410,7 @@ function EndScreen({
   onUndo,
   onExit,
 }: {
+  cram: boolean;
   reviewed: number;
   waitingUntil: Date | null;
   now: number;
@@ -339,14 +421,16 @@ function EndScreen({
   const minutes = waitingUntil ? Math.max(1, Math.round((waitingUntil.getTime() - LEARN_AHEAD_MS - now) / 60_000)) : 0;
   return (
     <div className="flex min-h-[60dvh] flex-col items-center justify-center gap-6 text-center">
-      <p className="eyebrow">{waitingUntil ? "Learning cards pending" : reviewed ? "Session complete" : "All clear"}</p>
+      <p className="eyebrow">{waitingUntil ? "Learning cards pending" : reviewed ? (cram ? "Cram complete" : "Session complete") : "All clear"}</p>
       <h1 className="font-display text-2xl tracking-[0.12em] text-frost">{waitingUntil ? "Take a break." : reviewed ? "Done." : "Nothing due."}</h1>
       <p className="max-w-xs text-mist">
         {waitingUntil
           ? `The next card is ready in about ${minutes} min. Stay here or come back later.`
           : reviewed
-            ? `${reviewed} ${reviewed === 1 ? "card" : "cards"} reviewed.`
-            : "There's nothing to review here right now."}
+            ? `${reviewed} ${reviewed === 1 ? "card" : "cards"} ${cram ? "gone through. Your schedule wasn't changed." : "reviewed."}`
+            : cram
+              ? "There are no cards in this selection."
+              : "There's nothing to review here right now. Use Cram to go through these cards anyway."}
       </p>
       <div className="flex flex-wrap justify-center gap-3">
         <Button onClick={onExit}>Back to overview</Button>

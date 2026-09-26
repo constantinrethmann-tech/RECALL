@@ -61,15 +61,41 @@ const byDue = (a: StudyCard, b: StudyCard) => a.sched.due.getTime() - b.sched.du
 
 /**
  * Builds the session from cards due today (learning + review) and today's chosen new cards.
- * Reviews are capped at `reviewLimit`, most overdue first.
+ * Reviews are capped at `reviewLimit`. They are ordered by `priority` (lowest first): with FSRS that is
+ * the chance you still remember the card, so the cards you're most likely to forget come first.
+ * Without a priority, the most overdue come first.
  */
-export function planSession(due: StudyCard[], fresh: StudyCard[], reviewLimit: number): SessionState {
+export function planSession(
+  due: StudyCard[],
+  fresh: StudyCard[],
+  reviewLimit: number,
+  priority?: (c: StudyCard) => number,
+): SessionState {
   const learning = due.filter((c) => isLearning(c.sched)).sort(byDue);
-  const reviews = due
-    .filter((c) => c.sched.state === State.Review)
-    .sort(byDue)
-    .slice(0, Math.max(0, reviewLimit));
-  return { learning, main: interleave(reviews, fresh) };
+  const reviews = due.filter((c) => c.sched.state === State.Review);
+  if (priority) {
+    const p = new Map(reviews.map((c) => [c.id, priority(c)]));
+    reviews.sort((a, b) => p.get(a.id)! - p.get(b.id)! || byDue(a, b));
+  } else reviews.sort(byDue);
+  return { learning, main: interleave(reviews.slice(0, Math.max(0, reviewLimit)), fresh) };
+}
+
+/** Fisher–Yates shuffle (cram mode). */
+export function shuffle<T>(items: T[], random = Math.random): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** Cram: Again comes back 3 cards later, Hard 8 cards later, Good/Easy are done for this session. */
+export function cramRequeue(s: SessionState, card: StudyCard, grade: number): SessionState {
+  const main = s.main.filter((c) => c.id !== card.id);
+  const gap = grade === 1 ? 3 : grade === 2 ? 8 : -1;
+  if (gap > 0) main.splice(Math.min(gap, main.length), 0, card);
+  return { learning: s.learning, main };
 }
 
 function earliest(cards: StudyCard[]): StudyCard | null {

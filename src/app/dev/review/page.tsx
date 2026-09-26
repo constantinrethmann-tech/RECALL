@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { createEmptyCard } from "ts-fsrs";
 import { ReviewSession, type ReviewPersistence } from "@/components/ReviewSession";
 import { dayBounds } from "@/lib/day";
 import { State } from "@/lib/fsrs";
 import { planSession } from "@/lib/queue";
-import type { StudyCard } from "@/lib/types";
+import type { StudyCard, StudyMode } from "@/lib/types";
 
 /**
  * Development only: the review screen with sample cards and no database,
@@ -14,7 +15,11 @@ import type { StudyCard } from "@/lib/types";
  */
 export default function DevReviewPage() {
   if (process.env.NODE_ENV === "production") return <p className="p-8 text-mist">Only available in development.</p>;
-  return <Preview />;
+  return (
+    <Suspense>
+      <Preview />
+    </Suspense>
+  );
 }
 
 const TABLE = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" font-family="Helvetica,Arial,sans-serif">
@@ -61,6 +66,7 @@ const fakePersist: ReviewPersistence = {
 };
 
 function Preview() {
+  const mode: StudyMode = useSearchParams().get("mode") === "cram" ? "cram" : "learn";
   const [plan] = useState(() =>
     planSession(
       [
@@ -87,12 +93,15 @@ function Preview() {
   );
   return (
     <ReviewSession
-      title="Dev preview · Business Law I"
+      key={mode}
+      title={mode === "cram" ? "Cram · Dev preview" : "Dev preview · Business Law I"}
+      mode={mode}
+      thinkBaselineMs={7000}
       initial={plan}
       dayEnd={dayBounds(new Date()).end}
       retention={0.9}
       describe={(c) => `Business Law I · Unit 03 · ${c.section}`}
-      persist={fakePersist}
+      persist={mode === "learn" ? fakePersist : null}
       loadImages={async (paths) => new Map(paths.map((p) => [p, TABLE_URL]))}
       onExit={() => location.reload()}
     />

@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { loadOverview, type Overview } from "@/lib/data";
+import { sameScope, studyHref } from "@/lib/scope";
 import { getSupabase } from "@/lib/supabase";
-import type { Scope } from "@/lib/types";
-import { Play } from "./icons";
+import { sortTags, tagLabel } from "@/lib/tags";
+import type { Scope, StudyMode, TagCounts } from "@/lib/types";
+import { Flame, Play } from "./icons";
 import { ButtonLink, Counts } from "./ui";
 
 /** Overview data that refreshes when the app comes back into view and when cards change on another device. */
@@ -55,10 +57,11 @@ export interface Totals {
   due: number;
   total: number;
   seen: number;
+  trouble: number;
 }
 
 export function subjectTotals(data: Overview, subjectId: string): Totals {
-  const t: Totals = { fresh: 0, learning: 0, due: 0, total: 0, seen: 0 };
+  const t: Totals = { fresh: 0, learning: 0, due: 0, total: 0, seen: 0, trouble: 0 };
   for (const u of data.units) {
     if (u.subject_id !== subjectId) continue;
     const c = data.counts.get(u.id);
@@ -68,6 +71,7 @@ export function subjectTotals(data: Overview, subjectId: string): Totals {
     t.due += c.due_count;
     t.total += c.total;
     t.seen += c.seen_count;
+    t.trouble += c.trouble_count;
   }
   // New cards are limited per subject per day.
   t.fresh = Math.min(t.fresh, data.newLeft.get(subjectId) ?? 0);
@@ -75,43 +79,86 @@ export function subjectTotals(data: Overview, subjectId: string): Totals {
 }
 
 export function grandTotals(data: Overview): Totals {
-  const t: Totals = { fresh: 0, learning: 0, due: 0, total: 0, seen: 0 };
+  const t: Totals = { fresh: 0, learning: 0, due: 0, total: 0, seen: 0, trouble: 0 };
   for (const s of data.subjects) {
     const st = subjectTotals(data, s.id);
-    t.fresh += st.fresh;
-    t.learning += st.learning;
-    t.due += st.due;
-    t.total += st.total;
-    t.seen += st.seen;
+    for (const k of Object.keys(t) as (keyof Totals)[]) t[k] += st[k];
   }
   return t;
 }
 
-const isActive = (active: Scope | undefined, kind: Scope["kind"], id?: string) =>
-  active?.kind === kind && (kind === "all" || (active as { id: string }).id === id);
-
-export function OverviewList({ data, active }: { data: Overview; active?: Scope }) {
-  if (!data.subjects.length) return <EmptyState />;
+/** Learn = normal reviews; Cram = go through everything, random order, schedule untouched. */
+export function ModeSwitch({ mode, onChange }: { mode: StudyMode; onChange: (m: StudyMode) => void }) {
   return (
-    <div className="space-y-7 px-2 pb-6">
+    <div className="px-4">
+      <div role="tablist" className="grid grid-cols-2 rounded-full border border-seam-2 p-1">
+        {(["learn", "cram"] as const).map((m) => (
+          <button
+            key={m}
+            role="tab"
+            aria-selected={mode === m}
+            onClick={() => onChange(m)}
+            className={`h-9 rounded-full text-[13px] transition-colors ${mode === m ? "bg-hull-3 text-frost" : "text-dust hover:text-mist"}`}
+          >
+            {m === "learn" ? "Learn" : "Cram"}
+          </button>
+        ))}
+      </div>
+      {mode === "cram" && (
+        <p className="mt-2.5 px-1 text-[12.5px] leading-relaxed text-dust">
+          Cram goes through every card of what you pick, in random order, without changing your schedule. For the night before an exam.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Chip({ href, label, count, tone = "ion", active }: { href: string; label: string; count: number; tone?: "ion" | "flare"; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] transition-colors ${
+        active ? "border-ion/60 bg-hull-2 text-frost" : "border-seam-2 text-mist hover:border-seam-3 hover:text-frost"
+      }`}
+    >
+      {label}
+      <span className={`font-mono text-[11px] ${count ? (tone === "flare" ? "text-flare" : "text-ion") : "text-seam-3"}`}>{count}</span>
+    </Link>
+  );
+}
+
+const tagCount = (t: TagCounts, mode: StudyMode, newLeft: number) =>
+  mode === "cram" ? t.total : t.due_count + t.learning_count + Math.min(t.new_count, newLeft);
+
+export function OverviewList({ data, active, mode }: { data: Overview; active?: Scope; mode: StudyMode }) {
+  if (!data.subjects.length) return <EmptyState />;
+  const cram = mode === "cram";
+  return (
+    <div className="space-y-8 px-2 pb-6">
       {data.subjects.map((s) => {
         const st = subjectTotals(data, s.id);
         const newLeft = data.newLeft.get(s.id) ?? 0;
         const units = data.units.filter((u) => u.subject_id === s.id && data.counts.has(u.id));
+        const tags = sortTags((data.tags.get(s.id) ?? []).map((t) => t.tag)).map((tag) => data.tags.get(s.id)!.find((t) => t.tag === tag)!);
         return (
           <section key={s.id}>
-            <div className={`flex items-center gap-2 rounded-xl py-1 pl-3 pr-1 ${isActive(active, "subject", s.id) ? "bg-hull-2" : ""}`}>
+            <div className={`flex items-center gap-2 rounded-xl py-1 pl-3 pr-1 ${sameScope(active, { subjectId: s.id }) ? "bg-hull-2" : ""}`}>
               <h2 className="min-w-0 flex-1 truncate font-display text-[10.5px] uppercase tracking-[0.2em] text-mist">{s.name}</h2>
-              <Counts fresh={st.fresh} learning={st.learning} due={st.due} />
+              {cram ? (
+                <span className="font-mono text-[12px] text-ion">{st.total}</span>
+              ) : (
+                <Counts fresh={st.fresh} learning={st.learning} due={st.due} />
+              )}
               <Link
-                href={`/study/?subject=${s.id}`}
-                aria-label={`Study all of ${s.name}`}
-                title={`Study all of ${s.name}`}
+                href={studyHref({ subjectId: s.id }, mode)}
+                aria-label={`${cram ? "Cram" : "Study"} all of ${s.name}`}
+                title={`${cram ? "Cram" : "Study"} all of ${s.name}`}
                 className="ml-1 grid h-10 w-10 place-items-center rounded-full border border-seam-2 text-ion transition-colors hover:border-ion/50 hover:bg-hull-2"
               >
                 <Play width={16} height={16} />
               </Link>
             </div>
+
             <div className="mt-1.5 space-y-0.5">
               {units.map((u) => {
                 const c = data.counts.get(u.id)!;
@@ -119,8 +166,8 @@ export function OverviewList({ data, active }: { data: Overview; active?: Scope 
                 return (
                   <Link
                     key={u.id}
-                    href={`/study/?unit=${u.id}`}
-                    className={`flex min-h-14 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${isActive(active, "unit", u.id) ? "bg-hull-2" : ""}`}
+                    href={studyHref({ unitId: u.id }, mode)}
+                    className={`flex min-h-14 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, { unitId: u.id }) ? "bg-hull-2" : ""}`}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[14px] text-frost">{u.name}</p>
@@ -131,11 +178,38 @@ export function OverviewList({ data, active }: { data: Overview; active?: Scope 
                         <span className="w-9 text-right font-mono text-[10px] text-dust">{pct}%</span>
                       </div>
                     </div>
-                    <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
+                    {cram ? (
+                      <span className="font-mono text-[12px] text-ion">{c.total}</span>
+                    ) : (
+                      <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
+                    )}
                   </Link>
                 );
               })}
             </div>
+
+            {(tags.length > 0 || st.trouble > 0) && (
+              <div className="mt-3 flex flex-wrap gap-2 px-3">
+                {tags.map((t) => (
+                  <Chip
+                    key={t.tag}
+                    href={studyHref({ subjectId: s.id, tag: t.tag }, mode)}
+                    label={tagLabel(t.tag)}
+                    count={tagCount(t, mode, newLeft)}
+                    active={sameScope(active, { subjectId: s.id, tag: t.tag })}
+                  />
+                ))}
+                {st.trouble > 0 && (
+                  <Chip
+                    href={studyHref({ subjectId: s.id, trouble: true }, "cram")}
+                    label="Trouble cards"
+                    count={st.trouble}
+                    tone="flare"
+                    active={sameScope(active, { subjectId: s.id, trouble: true })}
+                  />
+                )}
+              </div>
+            )}
           </section>
         );
       })}
@@ -147,29 +221,41 @@ function EmptyState() {
   return (
     <div className="mx-3 rounded-2xl border border-dashed border-seam-2 px-5 py-8 text-center">
       <p className="eyebrow">No cards yet</p>
-      <p className="mx-auto mt-3 max-w-xs text-[14px] text-mist">Import a deck (.zip with cards.json and pictures) to get started.</p>
-      <ButtonLink href="/import/" variant="ghost" className="mt-5">
-        Import a deck
-      </ButtonLink>
+      <p className="mx-auto mt-3 max-w-xs text-[14px] text-mist">Import a deck (.zip with cards.json and pictures) or add cards yourself.</p>
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <ButtonLink href="/import/" variant="ghost">
+          Import a deck
+        </ButtonLink>
+        <ButtonLink href="/edit/" variant="text">
+          Add a card
+        </ButtonLink>
+      </div>
     </div>
   );
 }
 
-export function TodayPanel({ data, large = false }: { data: Overview; large?: boolean }) {
+export function TodayPanel({ data, mode, large = false }: { data: Overview; mode: StudyMode; large?: boolean }) {
   const t = grandTotals(data);
   const due = t.due + t.learning;
-  const any = due + t.fresh > 0;
+  const cram = mode === "cram";
+  const any = cram ? t.total > 0 : due + t.fresh > 0;
   return (
     <div className={`rounded-3xl border border-seam bg-hull ${large ? "p-10" : "p-5"}`}>
-      <p className="eyebrow">Today</p>
+      <div className="flex items-center justify-between">
+        <p className="eyebrow">{cram ? "Cram" : "Today"}</p>
+        <p className={`flex items-center gap-1.5 font-mono text-[11px] ${data.streak ? "text-flare" : "text-dust"}`} title="Days in a row with at least one review">
+          <Flame width={14} height={14} />
+          {data.streak} {data.streak === 1 ? "day" : "days"}
+        </p>
+      </div>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className={`font-display tabular-nums text-frost ${large ? "text-6xl" : "text-4xl"}`}>{due}</span>
-        <span className="text-mist">due</span>
-        <span className="font-mono text-[13px] text-ion">+ {t.fresh} new</span>
+        <span className={`font-display tabular-nums text-frost ${large ? "text-6xl" : "text-4xl"}`}>{cram ? t.total : due}</span>
+        <span className="text-mist">{cram ? "cards" : "due"}</span>
+        {!cram && <span className="font-mono text-[13px] text-ion">+ {t.fresh} new</span>}
       </div>
       {any ? (
-        <ButtonLink href="/study/" className={`mt-6 w-full ${large ? "h-14 text-base" : ""}`}>
-          Study all
+        <ButtonLink href={studyHref({}, mode)} className={`mt-6 w-full ${large ? "h-14 text-base" : ""}`}>
+          {cram ? "Cram everything" : "Study all"}
         </ButtonLink>
       ) : (
         <p className="mt-5 text-[14px] text-mist">{t.total ? "All caught up for today." : "Nothing to study yet."}</p>

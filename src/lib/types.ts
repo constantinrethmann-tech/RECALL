@@ -76,6 +76,16 @@ export interface UnitCounts {
   learning_count: number;
   due_count: number;
   seen_count: number;
+  trouble_count: number;
+}
+
+export interface TagCounts {
+  subject_id: string;
+  tag: string;
+  total: number;
+  new_count: number;
+  learning_count: number;
+  due_count: number;
 }
 
 export interface TodayCounts {
@@ -85,7 +95,13 @@ export interface TodayCounts {
   total_done: number;
 }
 
-export type Scope =
-  | { kind: "all" }
-  | { kind: "subject"; id: string }
-  | { kind: "unit"; id: string };
+/** What to study: everything, a subject, a unit, and/or only cards with a tag or only trouble cards. */
+export interface Scope {
+  subjectId?: string;
+  unitId?: string;
+  tag?: string;
+  trouble?: boolean;
+}
+
+/** learn = normal FSRS reviews; cram = everything in the selection, random order, schedule untouched. */
+export type StudyMode = "learn" | "cram";
