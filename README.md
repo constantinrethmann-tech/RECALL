@@ -40,7 +40,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000/recall/. `/recall/dev/review/` shows the review screen with sample cards and no database
+Open http://localhost:3000/RECALL/. `/RECALL/dev/review/` shows the review screen with sample cards and no database
 (`?mode=cram` for cram mode).
 
 Other commands: `npm test` (logic tests), `npm run lint`, `npm run build` (static site in `out/`),
@@ -48,7 +48,7 @@ Other commands: `npm test` (logic tests), `npm run lint`, `npm run build` (stati
 
 ## Settings
 
-`.env` holds the public settings (Supabase URL + publishable key, base path `/recall`). They are safe to commit:
+`.env` holds the public settings (Supabase URL + publishable key, base path `/RECALL`). They are safe to commit:
 they end up in the public website anyway, and your data is protected by row-level security, not by them.
 Never commit the Supabase secret/service_role key or the database password; real secrets would go in
 `.env.local`, which git ignores.
@@ -56,7 +56,7 @@ Never commit the Supabase secret/service_role key or the database password; real
 ## Deploy
 
 Every push to `main` runs the tests, builds and publishes the site through GitHub Actions
-([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) to https://constantinrethmann-tech.github.io/recall/.
+([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) to https://constantinrethmann-tech.github.io/RECALL/.
 One-time: repo **Settings → Pages → Source: GitHub Actions**.
 
 ## Database
