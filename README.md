@@ -5,7 +5,7 @@ Installs as an app: Safari → Add to Home Screen on iPhone, Chrome/Edge → Ins
 See [SPEC.md](SPEC.md) for the full wish list.
 
 - **App:** Next.js (static export) + TypeScript + Tailwind, hosted on GitHub Pages
-- **Data:** Supabase (database, sign-in by email code, private picture storage). Row-level security: only you can see your data.
+- **Data:** Supabase (database, email + password sign-in, private picture storage). Row-level security: only you can see your data.
 - **Scheduling:** [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs) (FSRS-6 default parameters, learning steps 1m/10m, relearning 10m, fuzz on)
 
 ## What's in it
@@ -62,9 +62,15 @@ One-time: repo **Settings → Pages → Source: GitHub Actions**.
 ## Database
 
 Run [supabase/migrations/0001_init.sql](supabase/migrations/0001_init.sql) in Supabase → SQL Editor (safe to re-run after updates).
-Sign-in email templates: [supabase/email-templates.md](supabase/email-templates.md).
-Supabase → Authentication → URL Configuration: Site URL `https://constantinrethmann-tech.github.io/recall`,
-Redirect URLs `https://constantinrethmann-tech.github.io/recall/**` and `http://localhost:3000/**`.
+
+Account: Supabase → Authentication → Users → Add user → Create new user (email + password, tick "Auto Confirm User").
+Then Authentication → Sign In / Providers → turn off "Allow new users to sign up".
+Forgot the password? Never delete the user (that deletes all your cards). Instead run this in the SQL Editor:
+
+```sql
+update auth.users set encrypted_password = extensions.crypt('NEW-PASSWORD', extensions.gen_salt('bf'))
+where email = 'constantin.rethmann@gmail.com';
+```
 
 ## Later (v2)
 

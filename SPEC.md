@@ -83,3 +83,5 @@ cards.json:
 _Changelog:_
 - _2026-09-26 — PLATFORM section updated (laptop parity, desktop install via Chrome/Edge, adaptive wide layout, E/Z shortcuts, install on both devices at end of Phase 1)._
 - _2026-09-26 — Hosting: GitHub Pages instead of Vercel (same workflow as KAIROS; the code repo is public, all data stays private in Supabase)._
+- _2026-09-27 — Sign-in: email + password instead of magic link. Supabase now only allows custom email text with your own email service, and a magic link can't sign in the installed iPhone app (it opens Safari). The account is created once in the Supabase dashboard; sign-ups are switched off._
+- _2026-09-27 — Scheduling: longest gap 30 days, 30 new cards per day in total (max 20 per subject), automatic memory check that shortens gaps if you forget faster than FSRS predicts._

@@ -10,9 +10,8 @@ export function getSupabase(): SupabaseClient {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      // Sign-in links are handled explicitly on /auth/confirm.
+      // Sign-in is email + password, so there are no sign-in links to read from the URL.
       detectSessionInUrl: false,
-      flowType: "pkce",
       storageKey: "recall-auth",
     },
   });
