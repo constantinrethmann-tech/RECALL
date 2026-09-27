@@ -42,6 +42,7 @@ function sample(id: string, state: State, dueInMinutes: number, fields: Partial<
     back: "",
     frontImage: null,
     backImage: null,
+    explain: null,
     tags: [],
     position: 0,
     ...fields,
@@ -73,6 +74,8 @@ function Preview() {
         sample("r1", State.Review, -60, {
           front: "Which body approves the annual accounts of an **S.L.**?",
           back: "The **General Meeting** (Junta General), within **6 months** of the financial year end (Art. 164 LSC).",
+          explain:
+            "The **owners** decide, not the managers. The directors *prepare* the accounts, but the partners vote to approve them in the **General Meeting**, within **6 months** of the year end.\n\n**Example:** the year closes on 31 December → directors prepare the accounts by 31 March → partners approve them by 30 June.",
         }),
       ],
       [

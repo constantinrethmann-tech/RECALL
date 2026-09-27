@@ -55,6 +55,12 @@ describe("parseDeck", () => {
     expect(parseDeck({ ...spec, format: "anki" }).errors[0]).toMatch(/Unknown format/);
   });
 
+  it("reads an optional explanation", () => {
+    const card = spec.cards[0];
+    const { deck } = parseDeck({ ...spec, cards: [{ ...card, explain: "  Owners decide.  " }, { ...card, id: "b", explanation: "Alias works" }, { ...card, id: "c" }] });
+    expect(deck?.cards.map((c) => c.explain)).toEqual(["Owners decide.", "Alias works", null]);
+  });
+
   it("cleans tags", () => {
     expect(normalizeTags(["Exam", " case study 1 ", "exam"])).toEqual(["exam", "case-study-1"]);
     expect(normalizeTags("exam, midterm")).toEqual(["exam", "midterm"]);

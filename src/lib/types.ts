@@ -36,6 +36,8 @@ export interface CardRow extends ScheduleRow {
   back: string;
   front_image: string | null;
   back_image: string | null;
+  /** Plain-language explanation (markdown), shown by the Explain button. */
+  explain: string | null;
   tags: string[];
   position: number;
 }
@@ -50,6 +52,7 @@ export interface StudyCard {
   back: string;
   frontImage: string | null;
   backImage: string | null;
+  explain: string | null;
   tags: string[];
   position: number;
   sched: Card;

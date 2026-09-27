@@ -85,3 +85,10 @@ export const Flame = (p: SVGProps<SVGSVGElement>) => (
     <path d="M12 21c4 0 7-2.7 7-6.5 0-3.3-2.2-5.4-3.6-7.2-.3 1.8-1.2 3-2.4 3.7.2-3.4-1.4-6.3-4-8 .2 3-1.2 4.9-2.6 6.6C5.3 11.1 5 12.6 5 14.5 5 18.3 8 21 12 21z" />
   </Icon>
 );
+
+export const Bulb = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M9.5 18h5M10.5 21h3" />
+    <path d="M12 3a6 6 0 0 0-3.7 10.7c.7.6 1.2 1.4 1.2 2.3v.3h5v-.3c0-.9.5-1.7 1.2-2.3A6 6 0 0 0 12 3z" />
+  </Icon>
+);

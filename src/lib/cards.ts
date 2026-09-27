@@ -11,6 +11,7 @@ export interface CardDraft {
   back: string;
   frontImage: string | null;
   backImage: string | null;
+  explain: string;
 }
 
 /** Finds the subject and unit by name, creating them if they don't exist yet. */
@@ -64,6 +65,7 @@ export async function saveCard(draft: CardDraft, id?: string): Promise<CardRow> 
     back: draft.back.trim(),
     front_image: draft.frontImage,
     back_image: draft.backImage,
+    explain: draft.explain.trim() || null,
     updated_at: new Date().toISOString(),
   };
   const res = id

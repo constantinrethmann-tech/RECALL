@@ -8,7 +8,7 @@ import { afterRating, cramRequeue, LEARN_AHEAD_MS, nextLearningDue, pickNext, se
 import type { StudyCard, StudyMode } from "@/lib/types";
 import { CardEditorModal, type EditorResult } from "./CardEditor";
 import { CardImage, ImageZoom } from "./CardImage";
-import { ArrowLeft, Pencil, Undo } from "./icons";
+import { ArrowLeft, Bulb, Close, Pencil, Undo } from "./icons";
 import { Markdown } from "./Markdown";
 import { Button, Counts, ErrorNote, IconButton } from "./ui";
 
@@ -73,6 +73,7 @@ export function ReviewSession(props: Props) {
   const [images, setImages] = useState<Map<string, string>>(() => new Map());
   const [zoom, setZoom] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
   const [reviewed, setReviewed] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export function ReviewSession(props: Props) {
     setCurrent(card);
     setRevealed(false);
     setOutcomes(null);
+    setExplaining(false);
     shownAt.current = Date.now();
     interrupted.current = document.visibilityState === "hidden";
     scrollRef.current?.scrollTo({ top: 0 });
@@ -261,11 +263,21 @@ export function ReviewSession(props: Props) {
     [editing, session, current, show],
   );
 
-  // Keyboard: Space/Enter = show answer (then Good, like Anki), 1–4 = rate, Z = undo, E = edit.
+  // Explain panel: there is an explanation, or you can write one.
+  const canExplain = !!current && (!!current.explain || !!editable);
+
+  // Keyboard: Space/Enter = show answer (then Good, like Anki), 1–4 = rate, Z = undo, E = edit, X = explain.
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable='true']")) return;
     if (e.altKey || e.metaKey || zoom || editing) return;
-    if (e.key === " " || e.key === "Enter") {
+    if (explaining && (e.key === "Escape" || e.key === " " || e.key === "Enter" || e.key.toLowerCase() === "x")) {
+      // While reading the explanation, Space closes it instead of rating the card.
+      e.preventDefault();
+      setExplaining(false);
+    } else if (e.key.toLowerCase() === "x" && !e.ctrlKey && revealed && canExplain) {
+      e.preventDefault();
+      setExplaining(true);
+    } else if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
       if (!revealed) reveal();
       else rate(Rating.Good);
@@ -354,6 +366,17 @@ export function ReviewSession(props: Props) {
                   </div>
                   {current.back && <Markdown className="text-[1.06rem] leading-relaxed text-frost/95 sm:text-[1.15rem]">{current.back}</Markdown>}
                   {current.backImage && <CardImage url={images.get(current.backImage)} onZoom={setZoom} />}
+                  {canExplain && (
+                    <button
+                      type="button"
+                      onClick={() => setExplaining(true)}
+                      className="mt-8 inline-flex h-11 items-center gap-2 rounded-full border border-seam-2 pl-3.5 pr-4 text-[14px] text-mist transition-colors hover:border-ion/50 hover:text-frost active:scale-[.98]"
+                    >
+                      <Bulb width={18} height={18} className="text-ion" />
+                      {current.explain ? "Explain this" : "Add an explanation"}
+                      <kbd className="hidden font-mono text-[10px] text-dust lg:inline">x</kbd>
+                    </button>
+                  )}
                 </div>
               )}
             </article>
@@ -397,8 +420,51 @@ export function ReviewSession(props: Props) {
         </footer>
       )}
 
+      {explaining && current && !editing && (
+        <ExplainPanel
+          card={current}
+          onClose={() => setExplaining(false)}
+          onEdit={editable ? () => setEditing(current.id) : undefined}
+        />
+      )}
       {zoom && <ImageZoom url={zoom} onClose={() => setZoom(null)} />}
       {editing && <CardEditorModal cardId={editing} onDone={finishEdit} />}
+    </div>
+  );
+}
+
+/** The explanation of a card: a sheet from the bottom on phones, a panel on the right on wide screens. */
+function ExplainPanel({ card, onClose, onEdit }: { card: StudyCard; onClose: () => void; onEdit?: () => void }) {
+  return (
+    <div className="fixed inset-0 z-30" role="dialog" aria-modal aria-label="Explanation">
+      <div className="absolute inset-0 animate-[fadeIn_.2s_ease-out] bg-void/70 backdrop-blur-[2px]" onClick={onClose} />
+      <section className="absolute inset-x-0 bottom-0 flex max-h-[82dvh] animate-[sheetIn_.25s_ease-out] flex-col rounded-t-3xl border-t border-seam-2 bg-hull shadow-[0_-12px_40px_rgba(0,0,0,.5)] lg:inset-y-0 lg:left-auto lg:max-h-none lg:w-[460px] lg:animate-[drawerIn_.25s_ease-out] lg:rounded-none lg:border-l lg:border-t-0">
+        <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-seam pl-5 pr-2">
+          <Bulb width={18} height={18} className="text-ion" />
+          <h2 className="eyebrow flex-1">Explanation</h2>
+          <IconButton label="Close (Esc)" onClick={onClose}>
+            <Close />
+          </IconButton>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 lg:px-7 lg:py-7">
+          {card.explain ? (
+            <Markdown className="text-[1rem] leading-relaxed text-frost/95 lg:text-[1.05rem]">{card.explain}</Markdown>
+          ) : (
+            <p className="text-mist">
+              No explanation for this card yet. Write one in your own words: why is the answer true, and what&apos;s an everyday example?
+            </p>
+          )}
+        </div>
+        <footer className="pb-safe flex shrink-0 flex-wrap items-center gap-2 border-t border-seam px-4 pt-3">
+          <Button onClick={onClose}>Got it</Button>
+          {onEdit && (
+            <Button variant="text" onClick={onEdit}>
+              {card.explain ? "Edit explanation" : "Write one"}
+            </Button>
+          )}
+          <kbd className="ml-auto hidden font-mono text-[10px] text-dust lg:inline">esc · space closes</kbd>
+        </footer>
+      </section>
     </div>
   );
 }

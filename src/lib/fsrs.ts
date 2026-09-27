@@ -45,6 +45,7 @@ export function rowToStudyCard(r: CardRow): StudyCard {
     back: r.back,
     frontImage: r.front_image,
     backImage: r.back_image,
+    explain: r.explain ?? null,
     tags: r.tags ?? [],
     position: r.position,
     sched: rowToSchedule(r),

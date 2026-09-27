@@ -18,6 +18,8 @@ export interface DeckCard {
   /** Resolved path of the picture inside the zip, or null. */
   frontImage: string | null;
   backImage: string | null;
+  /** Plain-language explanation (markdown), or null. */
+  explain: string | null;
   tags: string[];
   source: string | null;
   /** Position in the file: new cards are studied in this order. */
@@ -148,6 +150,7 @@ export function parseDeck(raw: unknown, resolveImage?: (path: string) => string 
       back,
       frontImage,
       backImage,
+      explain: optText(card.explain ?? card.explanation),
       tags: normalizeTags(card.tags),
       source: optText(card.source),
       index: i,

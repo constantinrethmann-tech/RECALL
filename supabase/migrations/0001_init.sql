@@ -37,7 +37,8 @@ create table if not exists public.cards (
   back            text not null default '',      -- markdown
   front_image     text,                          -- path in the card-images bucket
   back_image      text,
-  extra           jsonb,                         -- v2 data (e.g. occlusion masks)
+  explain         text,                          -- markdown: plain-language explanation (Explain button)
+  extra          jsonb,                         -- v2 data (e.g. occlusion masks)
   tags            text[] not null default '{}',
   source          text,
   position        int  not null default 0,       -- order of new cards within a unit
@@ -57,6 +58,8 @@ create table if not exists public.cards (
   updated_at      timestamptz not null default now(),
   unique (user_id, external_id)
 );
+
+alter table public.cards add column if not exists explain text;
 
 create index if not exists cards_user_due_idx on public.cards (user_id, due);
 create index if not exists cards_unit_idx     on public.cards (unit_id);

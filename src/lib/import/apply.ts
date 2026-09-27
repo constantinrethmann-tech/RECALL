@@ -1,6 +1,6 @@
 import { uploadImage } from "../images";
 import { currentUserId, getSupabase } from "../supabase";
-import type { Deck } from "./deck";
+import type { Deck, DeckCard } from "./deck";
 
 export interface UnitPreview {
   name: string;
@@ -118,9 +118,10 @@ export async function applyImport(
   };
   await Promise.all(Array.from({ length: Math.min(4, paths.length) }, worker));
 
-  // 3. Cards, 200 per request. Every row has exactly the same keys.
+  // 3. Cards, 200 per request. Every row in a request has exactly the same keys, so cards
+  //    without an explanation in the file go separately and keep the one they already have.
   const now = new Date().toISOString();
-  const rows = deck.cards.map((c) => ({
+  const base = (c: DeckCard) => ({
     user_id: userId,
     external_id: c.id,
     subject_id: subjectId,
@@ -134,14 +135,17 @@ export async function applyImport(
     source: c.source,
     position: c.index,
     updated_at: now,
-  }));
+  });
+  const explained = deck.cards.filter((c) => c.explain).map((c) => ({ ...base(c), explain: c.explain }));
+  const plain = deck.cards.filter((c) => !c.explain).map(base);
+  const total = deck.cards.length;
   let saved = 0;
-  onProgress({ phase: "cards", done: 0, total: rows.length });
-  for (const batch of chunks(rows, 200)) {
+  onProgress({ phase: "cards", done: 0, total });
+  for (const batch of [...chunks(explained, 200), ...chunks(plain, 200)]) {
     const res = await sb.from("cards").upsert(batch, { onConflict: "user_id,external_id" });
     if (res.error) throw new Error(`Couldn't save cards: ${res.error.message}`);
     saved += batch.length;
-    onProgress({ phase: "cards", done: saved, total: rows.length });
+    onProgress({ phase: "cards", done: saved, total });
   }
 
   return { subjectId, created: preview.newCount, updated: preview.updateCount, images: paths.length };

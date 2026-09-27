@@ -24,7 +24,7 @@ interface Props {
 
 type Side = "front" | "back";
 
-const EMPTY: CardDraft = { subjectName: "", unitName: "", section: "", tags: [], front: "", back: "", frontImage: null, backImage: null };
+const EMPTY: CardDraft = { subjectName: "", unitName: "", section: "", tags: [], front: "", back: "", frontImage: null, backImage: null, explain: "" };
 
 export function CardEditor({ cardId, defaults, onDone }: Props) {
   const [tree, setTree] = useState<{ subjects: SubjectRow[]; units: UnitRow[] } | null>(null);
@@ -56,6 +56,7 @@ export function CardEditor({ cardId, defaults, onDone }: Props) {
           back: c.back,
           frontImage: c.front_image,
           backImage: c.back_image,
+          explain: c.explain ?? "",
         };
         tags = c.tags;
       } else {
@@ -265,6 +266,16 @@ export function CardEditor({ cardId, defaults, onDone }: Props) {
         <textarea value={draft.back} onChange={(e) => set({ back: e.target.value })} onPaste={(e) => onPaste("back", e)} placeholder={"**€3,000**\n- point one\n- point two"} className={`${area} mt-1.5 min-h-40`} />
         {imageSlot("back")}
         <p className="mt-2 text-[12px] text-dust">**bold** · *italic* · lines starting with “- ” become a list</p>
+      </div>
+
+      <div>
+        <span className="eyebrow">Explanation (optional)</span>
+        <textarea
+          value={draft.explain}
+          onChange={(e) => set({ explain: e.target.value })}
+          placeholder="Why is the answer true? Put it in your own words, with an everyday example. Shown by the Explain button."
+          className={`${area} mt-1.5`}
+        />
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
