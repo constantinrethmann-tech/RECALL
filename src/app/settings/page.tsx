@@ -6,7 +6,8 @@ import { RequireAuth, signOut, useAuth } from "@/components/auth";
 import { PageShell } from "@/components/PageShell";
 import { Button, ErrorNote, Splash } from "@/components/ui";
 import { createBackup, saveFile } from "@/lib/backup";
-import { loadSettings, saveSettings } from "@/lib/data";
+import { effectiveRetention, MIN_REVIEWS, type MemoryCheck } from "@/lib/calibration";
+import { loadMemoryCheck, loadSettings, saveSettings } from "@/lib/data";
 import type { Settings } from "@/lib/types";
 
 export default function SettingsPage() {
@@ -25,6 +26,11 @@ function SettingsScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [backup, setBackup] = useState<{ busy: boolean; message?: string; blob?: Blob }>({ busy: false });
+  const [memory, setMemory] = useState<MemoryCheck | null>(null);
+
+  useEffect(() => {
+    loadMemoryCheck().then(setMemory, () => {});
+  }, []);
 
   useEffect(() => {
     loadSettings().then(
@@ -96,9 +102,38 @@ function SettingsScreen() {
           <label className="flex items-center justify-between gap-4">
             <span>
               <span className="block text-[15px] text-frost">New cards per day</span>
-              <span className="text-[13px] text-mist">per subject</span>
+              <span className="text-[13px] text-mist">all subjects together · busiest days ≈ 6× this many reviews</span>
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={9999}
+              value={settings.new_per_day_total}
+              onChange={(e) => set({ new_per_day_total: Math.max(0, Number(e.target.value) || 0) })}
+              className={number}
+            />
+          </label>
+
+          <label className="flex items-center justify-between gap-4">
+            <span>
+              <span className="block text-[15px] text-frost">New cards per subject</span>
+              <span className="text-[13px] text-mist">max per day for one subject</span>
             </span>
             <input type="number" min={0} max={9999} value={settings.new_per_day} onChange={(e) => set({ new_per_day: Math.max(0, Number(e.target.value) || 0) })} className={number} />
+          </label>
+
+          <label className="flex items-center justify-between gap-4">
+            <span>
+              <span className="block text-[15px] text-frost">Longest gap</span>
+              <span className="text-[13px] text-mist">every card comes back at least this often</span>
+            </span>
+            <select value={settings.maximum_interval} onChange={(e) => set({ maximum_interval: Number(e.target.value) })} className={`${number} w-28`}>
+              {[7, 14, 21, 30, 45, 60, 90, 180, 36500].map((d) => (
+                <option key={d} value={d}>
+                  {d === 36500 ? "no limit" : `${d} days`}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="flex items-center justify-between gap-4">
@@ -140,9 +175,42 @@ function SettingsScreen() {
         </section>
 
         <section className="space-y-3 border-t border-seam pt-8">
+          <p className="eyebrow">Memory check</p>
+          {!memory ? (
+            <p className="text-[13.5px] text-mist">Checking…</p>
+          ) : memory.n < MIN_REVIEWS ? (
+            <p className="text-[13.5px] leading-relaxed text-mist">
+              Needs {MIN_REVIEWS} reviews of cards you&apos;ve seen before (you have {memory.n}). Then RECALL compares how often you really remember
+              cards with what FSRS predicts, and shortens all gaps automatically if you forget faster.
+            </p>
+          ) : (
+            <div className="space-y-2 text-[13.5px] leading-relaxed text-mist">
+              <p>
+                Last {memory.n} returning cards: you remembered <span className="font-mono text-frost">{Math.round(memory.observed * 100)}%</span>,
+                FSRS expected <span className="font-mono text-frost">{Math.round(memory.predicted * 100)}%</span>.
+              </p>
+              <p>
+                {memory.k < 1 ? (
+                  <>
+                    So gaps are now <span className="font-mono text-flare">{Math.round((1 - memory.k) * 100)}% shorter</span> (scheduling target{" "}
+                    {Math.round(effectiveRetention(settings.desired_retention, memory.k) * 1000) / 10}% instead of {retentionPct}%).
+                  </>
+                ) : (
+                  <span className="text-up">Your memory keeps up with the predictions, so no adjustment is needed.</span>
+                )}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3 border-t border-seam pt-8">
           <p className="eyebrow">How RECALL schedules</p>
           <ul className="list-disc space-y-2 pl-5 text-[13.5px] leading-relaxed text-mist">
-            <li>FSRS, the same algorithm as modern Anki. New cards: 1 min and 10 min steps, then days. Forgotten cards come back after 10 min.</li>
+            <li>
+              FSRS, the same algorithm as modern Anki. New cards: 1 min and 10 min steps, then days (2 → 11 → up to your longest gap). Forgotten
+              cards come back after 10 min, then after a few days.
+            </li>
+            <li>A card returns when your chance of still knowing it drops to your retention target, so on a normal day you know about 95% of all cards.</li>
             <li>Cards you&apos;re most likely to forget are shown first; new cards are mixed in between.</li>
             <li>
               Recall speed counts: if you answer Good or Easy but needed much longer than usual to remember, the card comes back sooner and is

@@ -84,7 +84,8 @@ function Study() {
         mode={mode}
         initial={load.plan}
         dayEnd={load.dayEnd}
-        retention={load.settings.desired_retention}
+        retention={load.retention}
+        maxInterval={load.settings.maximum_interval}
         thinkBaselineMs={load.thinkBaselineMs}
         describe={describe}
         persist={mode === "learn" ? persist : null}

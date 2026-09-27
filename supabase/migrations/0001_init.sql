@@ -95,8 +95,12 @@ create table if not exists public.settings (
   new_per_day          int  not null default 20  check (new_per_day between 0 and 9999),
   max_reviews_per_day  int  not null default 200 check (max_reviews_per_day between 0 and 99999),
   day_starts_at        smallint not null default 4 check (day_starts_at between 0 and 23),
+  new_per_day_total    int  not null default 30  check (new_per_day_total between 0 and 9999),
+  maximum_interval     int  not null default 30  check (maximum_interval between 1 and 36500),
   updated_at           timestamptz not null default now()
 );
+alter table public.settings add column if not exists new_per_day_total int not null default 30 check (new_per_day_total between 0 and 9999);
+alter table public.settings add column if not exists maximum_interval  int not null default 30 check (maximum_interval between 1 and 36500);
 
 -- Brain dump attempts (Phase 3).
 create table if not exists public.brain_dumps (

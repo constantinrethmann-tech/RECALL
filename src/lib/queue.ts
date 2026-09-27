@@ -20,11 +20,15 @@ export interface NewCandidate {
   position: number;
 }
 
-/** Picks today's new cards: in unit order, then card order, up to each subject's remaining limit. */
+/**
+ * Picks today's new cards: within a subject in unit order, then card order, up to that subject's
+ * remaining limit; across subjects in turns, so the daily total is shared fairly.
+ */
 export function chooseNewCards(
   candidates: NewCandidate[],
   unitOrder: Map<string, number>,
   remainingBySubject: Map<string, number>,
+  totalRemaining = Infinity,
 ): string[] {
   const sorted = [...candidates].sort(
     (a, b) =>
@@ -32,13 +36,23 @@ export function chooseNewCards(
       a.position - b.position ||
       a.id.localeCompare(b.id),
   );
+  const queues = new Map<string, NewCandidate[]>();
+  for (const c of sorted) queues.set(c.subjectId, [...(queues.get(c.subjectId) ?? []), c]);
   const left = new Map(remainingBySubject);
   const chosen: string[] = [];
-  for (const c of sorted) {
-    const n = left.get(c.subjectId) ?? 0;
-    if (n <= 0) continue;
-    left.set(c.subjectId, n - 1);
-    chosen.push(c.id);
+  let total = totalRemaining;
+  for (let progress = true; progress && total > 0; ) {
+    progress = false;
+    for (const [subject, queue] of queues) {
+      if (total <= 0) break;
+      const n = left.get(subject) ?? 0;
+      const next = queue.shift();
+      if (n <= 0 || !next) continue;
+      left.set(subject, n - 1);
+      chosen.push(next.id);
+      total--;
+      progress = true;
+    }
   }
   return chosen;
 }

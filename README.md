@@ -14,9 +14,12 @@ See [SPEC.md](SPEC.md) for the full wish list.
   **Learn** mode = normal FSRS reviews; **Cram** mode = every card of the selection in random order, schedule untouched.
 - **Review:** Again/Hard/Good/Easy with the next interval on each button, picture zoom, undo, edit in place.
   Keys: Space show answer (then Good), 1–4 rate, Z undo, E edit.
-- **Scheduling details** ([src/lib/effort.ts](src/lib/effort.ts), [src/lib/queue.ts](src/lib/queue.ts)):
+- **Scheduling details** ([src/lib/effort.ts](src/lib/effort.ts), [src/lib/queue.ts](src/lib/queue.ts), [src/lib/calibration.ts](src/lib/calibration.ts)):
   reviews are ordered by lowest recall probability first; new cards are spread between reviews;
-  daily limits: new cards per subject, reviews per day; the day starts at 4:00.
+  daily limits: 30 new cards in total (shared fairly between subjects, max 20 per subject), 200 reviews; longest gap 30 days;
+  the day starts at 4:00.
+  *Memory check:* after 30 reviews of returning cards, RECALL compares how often you really remembered them with FSRS's
+  prediction and, if you forget faster, shortens all gaps (by scheduling with a higher effective retention). Never lengthens them.
   *Recall speed:* a Good/Easy answer that took far longer than your usual recall time (median of your past answers,
   adjusted for question length and pictures) is scored part of the way towards Hard/Good — sooner return, higher difficulty.
   Pauses over 2 min or while the app was in the background are ignored.

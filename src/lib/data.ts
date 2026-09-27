@@ -1,4 +1,5 @@
 import type { Card, ReviewLog } from "ts-fsrs";
+import { checkMemory, effectiveRetention, type MemoryCheck } from "./calibration";
 import { dayBounds } from "./day";
 import { baselineThinkMs } from "./effort";
 import { makeScheduler, rowToStudyCard, State } from "./fsrs";
@@ -46,7 +47,7 @@ export function chunks<T>(items: T[], size: number): T[][] {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export async function loadSettings(): Promise<Settings> {
-  const res = await getSupabase().from("settings").select("desired_retention,new_per_day,max_reviews_per_day,day_starts_at").maybeSingle();
+  const res = await getSupabase().from("settings").select("desired_retention,new_per_day,new_per_day_total,max_reviews_per_day,maximum_interval,day_starts_at").maybeSingle();
   return { ...DEFAULT_SETTINGS, ...(check(res, "settings") ?? {}) };
 }
 
@@ -79,6 +80,13 @@ function remainingNew(subjects: SubjectRow[], today: Map<string | null, TodayCou
   return new Map(subjects.map((s) => [s.id, Math.max(0, settings.new_per_day - (today.get(s.id)?.new_done ?? 0))]));
 }
 
+/** How many new cards may still be introduced today, all subjects together. */
+function totalNewLeft(today: Map<string | null, TodayCounts>, settings: Settings) {
+  let done = 0;
+  for (const t of today.values()) done += t.new_done;
+  return Math.max(0, settings.new_per_day_total - done);
+}
+
 function reviewsLeft(today: Map<string | null, TodayCounts>, settings: Settings) {
   let done = 0;
   for (const t of today.values()) done += t.review_done;
@@ -106,6 +114,8 @@ export interface Overview {
   /** Per subject: its tags with counts. */
   tags: Map<string, TagCounts[]>;
   newLeft: Map<string, number>;
+  /** New cards still allowed today, all subjects together. */
+  newLeftTotal: number;
   reviewedToday: number;
   streak: number;
   settings: Settings;
@@ -133,6 +143,7 @@ export async function loadOverview(now = new Date()): Promise<Overview> {
     counts: new Map(counts.map((c) => [c.unit_id, c])),
     tags,
     newLeft: remainingNew(tree.subjects, today, settings),
+    newLeftTotal: totalNewLeft(today, settings),
     reviewedToday,
     streak,
     settings,
@@ -151,6 +162,9 @@ export interface StudyLoad {
   plan: SessionState;
   dayEnd: Date;
   settings: Settings;
+  /** Target retention actually used: your setting, raised if the memory check shows you forget faster. */
+  retention: number;
+  memory: MemoryCheck;
   /** Your usual recall time, for the slow-answer signal. */
   thinkBaselineMs: number;
 }
@@ -192,14 +206,34 @@ async function loadThinkSamples(): Promise<number[]> {
   return ((check(res, "recall times") ?? []) as { think_ms: number }[]).map((r) => r.think_ms);
 }
 
+/** Compares FSRS's predictions with your real results on recent reviews (see calibration.ts). */
+export async function loadMemoryCheck(): Promise<MemoryCheck> {
+  const res = await getSupabase()
+    .from("review_logs")
+    .select("rating,elapsed_days,stability")
+    .eq("state", State.Review)
+    .gte("elapsed_days", 1)
+    .order("review", { ascending: false })
+    .limit(600);
+  const rows = (check(res, "past reviews") ?? []) as { rating: number; elapsed_days: number; stability: number }[];
+  return checkMemory(rows.map((r) => ({ days: r.elapsed_days, stability: r.stability, recalled: r.rating > 1 })));
+}
+
 export async function loadStudy(scope: Scope, mode: StudyMode, now = new Date()): Promise<StudyLoad> {
   const sb = getSupabase();
   const settings = await loadSettings();
   const { start, end } = dayBounds(now, settings.day_starts_at);
-  const [tree, today, thinkSamples] = await Promise.all([loadTree(), loadToday(start), mode === "learn" ? loadThinkSamples() : []]);
+  const learn = mode === "learn";
+  const [tree, today, thinkSamples, memory] = await Promise.all([
+    loadTree(),
+    loadToday(start),
+    learn ? loadThinkSamples() : [],
+    learn ? loadMemoryCheck() : checkMemory([]),
+  ]);
   const subjects = new Map(tree.subjects.map((s) => [s.id, s]));
   const units = new Map(tree.units.map((u) => [u.id, u]));
-  const base = { subjects, units, dayEnd: end, settings, thinkBaselineMs: baselineThinkMs(thinkSamples) };
+  const retention = effectiveRetention(settings.desired_retention, memory.k);
+  const base = { subjects, units, dayEnd: end, settings, retention, memory, thinkBaselineMs: baselineThinkMs(thinkSamples) };
 
   if (mode === "cram") {
     const rows = await fetchAll<CardRow>("cards", (from, to) =>
@@ -230,6 +264,7 @@ export async function loadStudy(scope: Scope, mode: StudyMode, now = new Date())
       candidates.map<NewCandidate>((c) => ({ id: c.id, subjectId: c.subject_id, unitId: c.unit_id, position: c.position })),
       new Map(tree.units.map((u) => [u.id, u.position])),
       remainingNew(tree.subjects, today, settings),
+      totalNewLeft(today, settings),
     );
     for (const ids of chunks(newIds, 100)) {
       freshRows.push(...((check(await sb.from("cards").select(CARD_COLUMNS).in("id", ids), "new cards") ?? []) as CardRow[]));
@@ -238,7 +273,7 @@ export async function loadStudy(scope: Scope, mode: StudyMode, now = new Date())
     freshRows = freshRows.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
   }
 
-  const scheduler = makeScheduler(settings.desired_retention);
+  const scheduler = makeScheduler(retention, settings.maximum_interval);
   return {
     ...base,
     title: scopeTitle(scope, subjects, units),

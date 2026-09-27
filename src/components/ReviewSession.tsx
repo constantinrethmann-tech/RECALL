@@ -23,6 +23,8 @@ interface Props {
   initial: SessionState;
   dayEnd: Date;
   retention: number;
+  /** Longest gap between two reviews, in days. */
+  maxInterval: number;
   /** Your usual recall time (for the slow-answer signal). */
   thinkBaselineMs: number;
   /** e.g. "Business Law I · Unit 03 · A. S.A. vs S.L." */
@@ -61,9 +63,9 @@ const gradeColor: Record<number, string> = {
 const cramLabel: Record<number, string> = { [Rating.Again]: "soon", [Rating.Hard]: "later", [Rating.Good]: "done", [Rating.Easy]: "done" };
 
 export function ReviewSession(props: Props) {
-  const { title, mode, initial, dayEnd, retention, thinkBaselineMs, describe, persist, loadImages, editable, onExit } = props;
+  const { title, mode, initial, dayEnd, retention, maxInterval, thinkBaselineMs, describe, persist, loadImages, editable, onExit } = props;
   const cram = mode === "cram";
-  const scheduler = useMemo(() => makeScheduler(retention), [retention]);
+  const scheduler = useMemo(() => makeScheduler(retention, maxInterval), [retention, maxInterval]);
   const [session, setSession] = useState(initial);
   const [current, setCurrent] = useState<StudyCard | null>(() => pickNext(initial, new Date()));
   const [revealed, setRevealed] = useState(false);

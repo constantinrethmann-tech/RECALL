@@ -73,8 +73,8 @@ export function subjectTotals(data: Overview, subjectId: string): Totals {
     t.seen += c.seen_count;
     t.trouble += c.trouble_count;
   }
-  // New cards are limited per subject per day.
-  t.fresh = Math.min(t.fresh, data.newLeft.get(subjectId) ?? 0);
+  // New cards are limited per subject and in total per day.
+  t.fresh = Math.min(t.fresh, data.newLeft.get(subjectId) ?? 0, data.newLeftTotal);
   return t;
 }
 
@@ -84,6 +84,7 @@ export function grandTotals(data: Overview): Totals {
     const st = subjectTotals(data, s.id);
     for (const k of Object.keys(t) as (keyof Totals)[]) t[k] += st[k];
   }
+  t.fresh = Math.min(t.fresh, data.newLeftTotal);
   return t;
 }
 
@@ -137,7 +138,7 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
     <div className="space-y-8 px-2 pb-6">
       {data.subjects.map((s) => {
         const st = subjectTotals(data, s.id);
-        const newLeft = data.newLeft.get(s.id) ?? 0;
+        const newLeft = Math.min(data.newLeft.get(s.id) ?? 0, data.newLeftTotal);
         const units = data.units.filter((u) => u.subject_id === s.id && data.counts.has(u.id));
         const tags = sortTags((data.tags.get(s.id) ?? []).map((t) => t.tag)).map((tag) => data.tags.get(s.id)!.find((t) => t.tag === tag)!);
         return (

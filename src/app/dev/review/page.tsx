@@ -100,6 +100,7 @@ function Preview() {
       initial={plan}
       dayEnd={dayBounds(new Date()).end}
       retention={0.9}
+      maxInterval={30}
       describe={(c) => `Business Law I · Unit 03 · ${c.section}`}
       persist={mode === "learn" ? fakePersist : null}
       loadImages={async (paths) => new Map(paths.map((p) => [p, TABLE_URL]))}

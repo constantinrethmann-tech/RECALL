@@ -57,15 +57,22 @@ export interface StudyCard {
 
 export interface Settings {
   desired_retention: number;
+  /** New cards per day, per subject. */
   new_per_day: number;
+  /** New cards per day, all subjects together. */
+  new_per_day_total: number;
   max_reviews_per_day: number;
+  /** Longest gap between two reviews of a card, in days. */
+  maximum_interval: number;
   day_starts_at: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   desired_retention: 0.9,
   new_per_day: 20,
+  new_per_day_total: 30,
   max_reviews_per_day: 200,
+  maximum_interval: 30,
   day_starts_at: 4,
 };
 

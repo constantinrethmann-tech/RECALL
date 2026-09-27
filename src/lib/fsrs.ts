@@ -7,11 +7,13 @@ export type { Card, Grade };
 /**
  * ts-fsrs with its default parameters and short-term learning steps (1m, 10m; relearning 10m).
  * Fuzz is on, as in Anki, so cards learned together don't stay clumped together.
+ * `maximumInterval` caps the gap between two reviews (in days).
  */
-export function makeScheduler(desiredRetention = 0.9): FSRS {
+export function makeScheduler(desiredRetention = 0.9, maximumInterval = 36500): FSRS {
   return fsrs(
     generatorParameters({
       request_retention: desiredRetention,
+      maximum_interval: maximumInterval,
       enable_fuzz: true,
       enable_short_term: true,
     }),
