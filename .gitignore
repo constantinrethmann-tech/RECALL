@@ -43,3 +43,6 @@ next-env.d.ts
 
 # local tooling
 .claude/
+
+# scratch files for deck building
+.work/
