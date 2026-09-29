@@ -1,6 +1,8 @@
-/* RECALL code drills: runs Python (Pyodide) off the main thread, so an endless loop can be stopped. */
+/* RECALL code drills: runs Python (Pyodide) off the main thread, so an endless loop can be stopped.
+   A module worker (Pyodide no longer supports classic workers). */
+import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.mjs";
+
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/";
-importScripts(PYODIDE + "pyodide.js");
 
 const RUNNER = `
 import sys, traceback

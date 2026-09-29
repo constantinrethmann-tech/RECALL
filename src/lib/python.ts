@@ -20,7 +20,7 @@ let seq = 0;
 const handlers = new Map<number, Handler>();
 
 function start(): Promise<void> {
-  const w = new Worker(asset("/py-worker.js"));
+  const w = new Worker(asset("/py-worker.js"), { type: "module" });
   worker = w;
   ready = new Promise<void>((resolve, reject) => {
     w.onmessage = (e: MessageEvent) => {

@@ -42,7 +42,7 @@ type Status =
   | { kind: "idle" }
   | { kind: "running"; loading: boolean }
   | { kind: "right"; note?: string }
-  | { kind: "wrong"; message: string; expected?: string; actual?: string; error?: RunError }
+  | { kind: "wrong"; message: string; expected?: string; actual?: string; error?: RunError; canOverride?: boolean }
   | { kind: "failed"; message: string };
 
 export interface DrillResult {
@@ -111,6 +111,7 @@ export function CodeDrillView({ cardId, drill, done, onDone }: { cardId: string;
                 : "Not quite: your output is different.",
             expected: verdict.expected,
             actual: verdict.actual,
+            canOverride: !hidden,
           });
           return;
         }
@@ -126,8 +127,9 @@ export function CodeDrillView({ cardId, drill, done, onDone }: { cardId: string;
   // ─── Editor keys: Tab indents, Enter keeps the indentation, Ctrl+Enter checks ───
   const insert = (text: string) => {
     const el = editor.current!;
-    // execCommand keeps Ctrl+Z working; fall back if the browser doesn't support it.
-    if (!document.execCommand("insertText", false, text)) {
+    // execCommand keeps Ctrl+Z working ("insertText" can't insert nothing, so deleting uses "delete").
+    const ok = text ? document.execCommand("insertText", false, text) : el.selectionStart === el.selectionEnd || document.execCommand("delete");
+    if (!ok) {
       el.setRangeText(text, el.selectionStart, el.selectionEnd, "end");
       setCodeText(el.value);
     }
@@ -225,7 +227,7 @@ export function CodeDrillView({ cardId, drill, done, onDone }: { cardId: string;
               Hint {hintsShown + 1}/{hints.length}
             </Button>
           )}
-          {status.kind === "wrong" && status.expected !== undefined && (
+          {status.kind === "wrong" && status.canOverride && (
             <Button variant="text" onClick={() => finish(true)} title="Use this if your answer is right but printed differently">
               My answer is right
             </Button>

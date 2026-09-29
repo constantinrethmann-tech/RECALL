@@ -80,6 +80,22 @@ function Preview() {
         }),
       ],
       [
+        sample("d1", State.New, 0, {
+          front: "Count the vowels",
+          back: "",
+          section: "Loops (applied)",
+          drill: {
+            hints: ["counter = 0 before the loop.", "for char in text: if char in vowels: count += 1", "Print after the loop."],
+            variants: [
+              {
+                prompt: "Count the vowels in `text` with a `for` loop. Print `Number of vowels: <n>`.",
+                setup: ['text = "Programming"'],
+                solution: ['vowels = "aeiouAEIOU"', "count = 0", "for char in text:", "    if char in vowels:", "        count += 1", 'print("Number of vowels:", count)'],
+                tests: [{ setup: ['text = "AEIOU xyz"'] }],
+              },
+            ],
+          },
+        }),
         sample("n1", State.New, 0, {
           front: "Minimum share capital of an **S.L.**?",
           back: "**€3,000** (course).\nLaw 18/2022 allows €1 with safeguards.",

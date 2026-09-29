@@ -390,9 +390,11 @@ export function ReviewSession(props: Props) {
 
               {revealed && (
                 <div ref={answerRef} className="animate-[fadeIn_.25s_ease-out]">
-                  <div className="relative my-7 h-px bg-seam-2">
-                    <span className="absolute -top-[3px] left-0 h-[7px] w-[7px] rounded-full bg-ion shadow-[0_0_12px_2px_rgba(143,179,255,.45)]" />
-                  </div>
+                  {!current.drill && (
+                    <div className="relative my-7 h-px bg-seam-2">
+                      <span className="absolute -top-[3px] left-0 h-[7px] w-[7px] rounded-full bg-ion shadow-[0_0_12px_2px_rgba(143,179,255,.45)]" />
+                    </div>
+                  )}
                   {!current.drill && current.back && <Markdown className="text-[1.06rem] leading-relaxed text-frost/95 sm:text-[1.15rem]">{current.back}</Markdown>}
                   {current.backImage && <CardImage url={images.get(current.backImage)} onZoom={setZoom} />}
                   {canExplain && (
