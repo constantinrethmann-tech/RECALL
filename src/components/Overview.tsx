@@ -7,7 +7,7 @@ import { sameScope, studyHref } from "@/lib/scope";
 import { getSupabase } from "@/lib/supabase";
 import { sortTags, tagLabel } from "@/lib/tags";
 import type { Scope, StudyMode, TagCounts } from "@/lib/types";
-import { Chevron, Flame, Play } from "./icons";
+import { Chevron, Flame, Pencil, Play } from "./icons";
 import { ButtonLink, Counts } from "./ui";
 
 /** Overview data that refreshes when the app comes back into view and when cards change on another device. */
@@ -250,6 +250,10 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
           </section>
         );
       })}
+      <Link href="/decks/" className="mx-2 mt-2 inline-flex h-10 items-center gap-2 rounded-full px-2 text-[12.5px] text-dust transition-colors hover:text-frost">
+        <Pencil width={14} height={14} />
+        Edit subjects &amp; units
+      </Link>
     </div>
   );
 }

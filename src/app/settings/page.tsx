@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { RequireAuth, signOut, useAuth } from "@/components/auth";
 import { PageShell } from "@/components/PageShell";
-import { Button, ErrorNote, Splash } from "@/components/ui";
+import { Button, ButtonLink, ErrorNote, Splash } from "@/components/ui";
 import { createBackup, saveFile } from "@/lib/backup";
 import { effectiveRetention, MIN_REVIEWS, type MemoryCheck } from "@/lib/calibration";
 import { loadMemoryCheck, loadSettings, saveSettings } from "@/lib/data";
@@ -218,6 +218,14 @@ function SettingsScreen() {
             </li>
             <li>Cards forgotten twice or marked hard appear as “Trouble cards”, so you can drill them in Cram mode.</li>
           </ul>
+        </section>
+
+        <section className="space-y-4 border-t border-seam pt-8">
+          <p className="eyebrow">Subjects &amp; units</p>
+          <p className="text-[13.5px] text-mist">Rename or delete subjects and units (and all their cards).</p>
+          <ButtonLink href="/decks/" variant="ghost">
+            Edit subjects &amp; units
+          </ButtonLink>
         </section>
 
         <section className="space-y-4 border-t border-seam pt-8">
