@@ -6,7 +6,7 @@ import { loadOverview, type Overview } from "@/lib/data";
 import { sameScope, studyHref } from "@/lib/scope";
 import { getSupabase } from "@/lib/supabase";
 import { sortTags, tagLabel } from "@/lib/tags";
-import type { Scope, StudyMode, TagCounts } from "@/lib/types";
+import type { Scope, StudyMode, TagCounts, UnitRow } from "@/lib/types";
 import { Chevron, Flame, Pencil, Play } from "./icons";
 import { ButtonLink, Counts } from "./ui";
 
@@ -131,13 +131,14 @@ function Chip({ href, label, count, tone = "ion", active }: { href: string; labe
 const tagCount = (t: TagCounts, mode: StudyMode, newLeft: number) =>
   mode === "cram" ? t.total : t.due_count + t.learning_count + Math.min(t.new_count, newLeft);
 
-const OPEN_KEY = "recall-open-subjects";
+/** A unit named "<topic> · Code" is shown folded under "<topic>" (its code drills). */
+const CODE_SUFFIX = " · Code";
 
-/** Which subjects are unfolded. Folded by default; remembered on this device. */
-function useOpenSubjects() {
+/** Which subjects (or units) are unfolded. Folded by default; remembered on this device. */
+function useOpenSet(storageKey: string) {
   const [open, setOpen] = useState<Set<string>>(() => {
     try {
-      return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[]") as string[]);
+      return new Set(JSON.parse(localStorage.getItem(storageKey) ?? "[]") as string[]);
     } catch {
       return new Set();
     }
@@ -147,7 +148,7 @@ function useOpenSubjects() {
       const next = new Set(prev);
       if (!next.delete(id)) next.add(id);
       try {
-        localStorage.setItem(OPEN_KEY, JSON.stringify([...next]));
+        localStorage.setItem(storageKey, JSON.stringify([...next]));
       } catch {}
       return next;
     });
@@ -155,7 +156,8 @@ function useOpenSubjects() {
 }
 
 export function OverviewList({ data, active, mode }: { data: Overview; active?: Scope; mode: StudyMode }) {
-  const [openSubjects, toggleSubject] = useOpenSubjects();
+  const [openSubjects, toggleSubject] = useOpenSet("recall-open-subjects");
+  const [openUnits, toggleUnit] = useOpenSet("recall-open-units");
   if (!data.subjects.length) return <EmptyState />;
   const cram = mode === "cram";
   return (
@@ -166,6 +168,42 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
         const units = data.units.filter((u) => u.subject_id === s.id && data.counts.has(u.id));
         const tags = sortTags((data.tags.get(s.id) ?? []).map((t) => t.tag)).map((tag) => data.tags.get(s.id)!.find((t) => t.tag === tag)!);
         const isOpen = openSubjects.has(s.id);
+        // "<topic> · Code" units hang under their topic.
+        const byName = new Map(units.map((u) => [u.name, u]));
+        const codeUnitOf = new Map<string, UnitRow>();
+        for (const u of units) {
+          const parent = u.name.endsWith(CODE_SUFFIX) ? byName.get(u.name.slice(0, -CODE_SUFFIX.length)) : undefined;
+          if (parent) codeUnitOf.set(parent.id, u);
+        }
+        const children = new Set([...codeUnitOf.values()].map((u) => u.id));
+        const unitLink = (u: UnitRow, label: string, code = false) => {
+          const c = data.counts.get(u.id)!;
+          const pct = c.total ? Math.round((c.seen_count / c.total) * 100) : 0;
+          return (
+            <Link
+              href={studyHref({ unitId: u.id }, mode)}
+              className={`flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, { unitId: u.id }) ? "bg-hull-2" : ""}`}
+            >
+              <div className="min-w-0 flex-1">
+                <p className={`flex items-center gap-2 truncate text-[14px] ${code ? "text-mist" : "text-frost"}`}>
+                  {code && <Pencil width={14} height={14} className="shrink-0 text-ion" />}
+                  {label}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-seam">
+                    <div className="h-full rounded-full bg-ion/70" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="w-9 text-right font-mono text-[10px] text-dust">{pct}%</span>
+                </div>
+              </div>
+              {cram ? (
+                <span className="font-mono text-[12px] text-ion">{c.total}</span>
+              ) : (
+                <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
+              )}
+            </Link>
+          );
+        };
         return (
           <section key={s.id} className={isOpen ? "pb-5" : ""}>
             <div className={`flex items-center gap-2 rounded-xl py-1 pl-1 pr-1 ${sameScope(active, { subjectId: s.id }) ? "bg-hull-2" : ""}`}>
@@ -196,32 +234,31 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
 
             {isOpen && (
               <div className="mt-1.5 animate-[fadeIn_.2s_ease-out] space-y-0.5">
-                {units.map((u) => {
-                  const c = data.counts.get(u.id)!;
-                  const pct = c.total ? Math.round((c.seen_count / c.total) * 100) : 0;
-                  return (
-                    <Link
-                      key={u.id}
-                      href={studyHref({ unitId: u.id }, mode)}
-                      className={`flex min-h-14 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, { unitId: u.id }) ? "bg-hull-2" : ""}`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] text-frost">{u.name}</p>
-                        <div className="mt-2 flex items-center gap-2">
-                          <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-seam">
-                            <div className="h-full rounded-full bg-ion/70" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className="w-9 text-right font-mono text-[10px] text-dust">{pct}%</span>
+                {units
+                  .filter((u) => !children.has(u.id))
+                  .map((u) => {
+                    const codeUnit = codeUnitOf.get(u.id);
+                    if (!codeUnit) return <div key={u.id} className="flex">{unitLink(u, u.name)}</div>;
+                    const unitOpen = openUnits.has(u.id) || sameScope(active, { unitId: codeUnit.id });
+                    return (
+                      <div key={u.id}>
+                        <div className="flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleUnit(u.id)}
+                            aria-expanded={unitOpen}
+                            aria-label={unitOpen ? `Hide code exercises for ${u.name}` : `Show code exercises for ${u.name}`}
+                            title={unitOpen ? "Hide code exercises" : "Show code exercises"}
+                            className="grid h-11 w-7 shrink-0 place-items-center rounded-lg text-dust transition-colors hover:text-ion"
+                          >
+                            <Chevron width={15} height={15} className={`transition-transform duration-200 ${unitOpen ? "rotate-90" : ""}`} />
+                          </button>
+                          {unitLink(u, u.name)}
                         </div>
+                        {unitOpen && <div className="flex animate-[fadeIn_.2s_ease-out] pl-7">{unitLink(codeUnit, "Write code", true)}</div>}
                       </div>
-                      {cram ? (
-                        <span className="font-mono text-[12px] text-ion">{c.total}</span>
-                      ) : (
-                        <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
-                      )}
-                    </Link>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
 
