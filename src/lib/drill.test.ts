@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanTyping, compareRuns, newlineIndent, normalizeOutput, parseDrill, pickVariant, suggestedGrade, type RunResult } from "./drill";
+import { cleanTyping, compareRuns, newlineIndent, normalizeOutput, parseDrill, pickDrillVariant, pickVariant, suggestedGrade, type CodeDrill, type RunResult } from "./drill";
 import { parseDeck } from "./import/deck";
 
 const run = (stdout: string, values: Record<string, string | null> = {}): RunResult => ({ stdout, error: null, values });
@@ -50,6 +50,16 @@ describe("helpers", () => {
     for (let r = 0; r < 1; r += 0.1) expect(pickVariant(3, 1, () => r)).not.toBe(1);
     expect(pickVariant(1, 0)).toBe(0);
   });
+  it("unlocks harder variants with more reviews", () => {
+    const d: CodeDrill = { hints: [], variants: [1, 1, 2, 3].map((level) => ({ prompt: "p", setup: [], solution: ["x"], level })) };
+    const seen = (reps: number) => new Set(Array.from({ length: 50 }, (_, k) => pickDrillVariant(d, reps, null, () => k / 50)));
+    expect([...seen(0)].sort()).toEqual([0, 1]);
+    expect(seen(4).has(2)).toBe(true);
+    expect(seen(4).has(3)).toBe(false);
+    expect(seen(8).has(3)).toBe(true);
+    for (let k = 0; k < 20; k++) expect(pickDrillVariant(d, 0, 0, () => k / 20)).toBe(1);
+  });
+
   it("suggests a rating", () => {
     expect(suggestedGrade({ solved: true, hintsUsed: 0 })).toBe(3);
     expect(suggestedGrade({ solved: true, hintsUsed: 2 })).toBe(2);

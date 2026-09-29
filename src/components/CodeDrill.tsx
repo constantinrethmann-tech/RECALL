@@ -8,7 +8,7 @@ import {
   INDENT,
   joinLines,
   newlineIndent,
-  pickVariant,
+  pickDrillVariant,
   solutionMarkdown,
   suggestedGrade,
   type CodeDrill,
@@ -55,8 +55,8 @@ export interface DrillResult {
  * A code exercise: type the program, Check runs it and compares the result with the model solution's
  * (also with other hidden values). Hints come one at a time; the solution only when you give up.
  */
-export function CodeDrillView({ cardId, drill, done, onDone }: { cardId: string; drill: CodeDrill; done: boolean; onDone: (r: DrillResult) => void }) {
-  const [index] = useState(() => pickVariant(drill.variants.length, lastVariant(cardId)));
+export function CodeDrillView({ cardId, drill, reps, done, onDone }: { cardId: string; drill: CodeDrill; reps: number; done: boolean; onDone: (r: DrillResult) => void }) {
+  const [index] = useState(() => pickDrillVariant(drill, reps, lastVariant(cardId)));
   const variant: DrillVariant = drill.variants[index];
   const hints = hintsFor(drill, variant);
   const [codeText, setCodeText] = useState("");

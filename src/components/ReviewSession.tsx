@@ -376,6 +376,7 @@ export function ReviewSession(props: Props) {
                   key={`${current.id}-${drillKey}`}
                   cardId={current.id}
                   drill={current.drill}
+                  reps={current.sched.reps}
                   done={revealed}
                   onDone={(r) => {
                     setSuggested(r.grade);

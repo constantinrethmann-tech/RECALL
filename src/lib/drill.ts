@@ -22,6 +22,8 @@ export interface DrillVariant {
   tests?: DrillCase[];
   /** Compare these variables instead of the printed output. */
   check?: string[];
+  /** 1 = basic (default); 2 and 3 unlock after more reviews, so the tasks keep changing. */
+  level?: number;
 }
 
 export interface CodeDrill {
@@ -55,6 +57,7 @@ export function parseDrill(raw: unknown): CodeDrill | string {
       hints: strings(r.hints) ?? undefined,
       tests,
       check: strings(r.check) ?? undefined,
+      level: typeof r.level === "number" ? r.level : undefined,
     });
   }
   if (!variants.length) return 'no "variants"';
@@ -66,6 +69,25 @@ export function pickVariant(count: number, last: number | null, random = Math.ra
   if (count <= 1) return 0;
   const i = Math.floor(random() * (count - 1));
   return last !== null && last >= 0 && last < count && i >= last ? i + 1 : i;
+}
+
+/** Reviews per unlocked level: level 2 variants from the 5th review, level 3 from the 9th. */
+export const REVIEWS_PER_DRILL_LEVEL = 4;
+
+/**
+ * Picks a variant for this showing: any unlocked one (level ≤ 1 + reviews / 4), not the same as last time.
+ * Once harder levels are unlocked, they come up more often than the basic ones.
+ */
+export function pickDrillVariant(drill: CodeDrill, reps: number, last: number | null, random = Math.random): number {
+  const unlocked = 1 + Math.floor(Math.max(0, reps) / REVIEWS_PER_DRILL_LEVEL);
+  let pool = drill.variants.map((v, i) => ({ i, level: v.level ?? 1 })).filter((v) => v.level <= unlocked);
+  if (!pool.length) pool = drill.variants.map((v, i) => ({ i, level: v.level ?? 1 }));
+  const top = Math.max(...pool.map((v) => v.level));
+  // Weight: the highest unlocked level counts twice.
+  const weighted = pool.flatMap((v) => (v.level === top && top > 1 ? [v.i, v.i] : [v.i]));
+  const choices = weighted.filter((i) => i !== last);
+  const from = choices.length ? choices : weighted;
+  return from[Math.floor(random() * from.length)];
 }
 
 export const joinLines = (lines: string[]) => lines.join("\n");
