@@ -7,7 +7,7 @@ import { sameScope, studyHref } from "@/lib/scope";
 import { getSupabase } from "@/lib/supabase";
 import { sortTags, tagLabel } from "@/lib/tags";
 import type { Scope, StudyMode, TagCounts } from "@/lib/types";
-import { Flame, Play } from "./icons";
+import { Chevron, Flame, Play } from "./icons";
 import { ButtonLink, Counts } from "./ui";
 
 /** Overview data that refreshes when the app comes back into view and when cards change on another device. */
@@ -131,20 +131,54 @@ function Chip({ href, label, count, tone = "ion", active }: { href: string; labe
 const tagCount = (t: TagCounts, mode: StudyMode, newLeft: number) =>
   mode === "cram" ? t.total : t.due_count + t.learning_count + Math.min(t.new_count, newLeft);
 
+const OPEN_KEY = "recall-open-subjects";
+
+/** Which subjects are unfolded. Folded by default; remembered on this device. */
+function useOpenSubjects() {
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      try {
+        localStorage.setItem(OPEN_KEY, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  return [open, toggle] as const;
+}
+
 export function OverviewList({ data, active, mode }: { data: Overview; active?: Scope; mode: StudyMode }) {
+  const [openSubjects, toggleSubject] = useOpenSubjects();
   if (!data.subjects.length) return <EmptyState />;
   const cram = mode === "cram";
   return (
-    <div className="space-y-8 px-2 pb-6">
+    <div className="space-y-2 px-2 pb-6">
       {data.subjects.map((s) => {
         const st = subjectTotals(data, s.id);
         const newLeft = Math.min(data.newLeft.get(s.id) ?? 0, data.newLeftTotal);
         const units = data.units.filter((u) => u.subject_id === s.id && data.counts.has(u.id));
         const tags = sortTags((data.tags.get(s.id) ?? []).map((t) => t.tag)).map((tag) => data.tags.get(s.id)!.find((t) => t.tag === tag)!);
+        const isOpen = openSubjects.has(s.id);
         return (
-          <section key={s.id}>
-            <div className={`flex items-center gap-2 rounded-xl py-1 pl-3 pr-1 ${sameScope(active, { subjectId: s.id }) ? "bg-hull-2" : ""}`}>
-              <h2 className="min-w-0 flex-1 truncate font-display text-[10.5px] uppercase tracking-[0.2em] text-mist">{s.name}</h2>
+          <section key={s.id} className={isOpen ? "pb-5" : ""}>
+            <div className={`flex items-center gap-2 rounded-xl py-1 pl-1 pr-1 ${sameScope(active, { subjectId: s.id }) ? "bg-hull-2" : ""}`}>
+              <button
+                type="button"
+                onClick={() => toggleSubject(s.id)}
+                aria-expanded={isOpen}
+                title={isOpen ? "Fold units" : "Show units"}
+                className="group flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg pl-1.5 text-left"
+              >
+                <Chevron width={16} height={16} className={`shrink-0 text-dust transition-transform duration-200 group-hover:text-ion ${isOpen ? "rotate-90" : ""}`} />
+                <h2 className="min-w-0 flex-1 truncate font-display text-[10.5px] uppercase tracking-[0.2em] text-mist group-hover:text-frost">{s.name}</h2>
+              </button>
               {cram ? (
                 <span className="font-mono text-[12px] text-ion">{st.total}</span>
               ) : (
@@ -160,36 +194,38 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
               </Link>
             </div>
 
-            <div className="mt-1.5 space-y-0.5">
-              {units.map((u) => {
-                const c = data.counts.get(u.id)!;
-                const pct = c.total ? Math.round((c.seen_count / c.total) * 100) : 0;
-                return (
-                  <Link
-                    key={u.id}
-                    href={studyHref({ unitId: u.id }, mode)}
-                    className={`flex min-h-14 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, { unitId: u.id }) ? "bg-hull-2" : ""}`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] text-frost">{u.name}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-seam">
-                          <div className="h-full rounded-full bg-ion/70" style={{ width: `${pct}%` }} />
+            {isOpen && (
+              <div className="mt-1.5 animate-[fadeIn_.2s_ease-out] space-y-0.5">
+                {units.map((u) => {
+                  const c = data.counts.get(u.id)!;
+                  const pct = c.total ? Math.round((c.seen_count / c.total) * 100) : 0;
+                  return (
+                    <Link
+                      key={u.id}
+                      href={studyHref({ unitId: u.id }, mode)}
+                      className={`flex min-h-14 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, { unitId: u.id }) ? "bg-hull-2" : ""}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[14px] text-frost">{u.name}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-seam">
+                            <div className="h-full rounded-full bg-ion/70" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="w-9 text-right font-mono text-[10px] text-dust">{pct}%</span>
                         </div>
-                        <span className="w-9 text-right font-mono text-[10px] text-dust">{pct}%</span>
                       </div>
-                    </div>
-                    {cram ? (
-                      <span className="font-mono text-[12px] text-ion">{c.total}</span>
-                    ) : (
-                      <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
+                      {cram ? (
+                        <span className="font-mono text-[12px] text-ion">{c.total}</span>
+                      ) : (
+                        <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
 
-            {(tags.length > 0 || st.trouble > 0) && (
+            {isOpen && (tags.length > 0 || st.trouble > 0) && (
               <div className="mt-3 flex flex-wrap gap-2 px-3">
                 {tags.map((t) => (
                   <Chip
