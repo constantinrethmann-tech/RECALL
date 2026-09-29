@@ -18,6 +18,7 @@ const card = (id: string, state = State.Review, due = new Date("2026-10-01T00:00
   backImage: null,
   explain: null,
   drill: null,
+  examples: null,
   tags: [],
   position: 0,
   sched: { ...createEmptyCard(due), state, due },

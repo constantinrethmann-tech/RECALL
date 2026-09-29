@@ -60,6 +60,8 @@ export interface StudyCard {
   explain: string | null;
   /** Set for code drills (kind "code"). */
   drill: CodeDrill | null;
+  /** Worked examples, simple → harder (markdown). */
+  examples: string[] | null;
   tags: string[];
   position: number;
   sched: Card;

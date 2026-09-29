@@ -8,6 +8,7 @@ import { afterRating, cramRequeue, LEARN_AHEAD_MS, nextLearningDue, pickNext, se
 import type { StudyCard, StudyMode } from "@/lib/types";
 import { preloadPython } from "@/lib/python";
 import { CodeDrillView } from "./CodeDrill";
+import { WorkedExample } from "./WorkedExample";
 import { CardEditorModal, type EditorResult } from "./CardEditor";
 import { CardImage, ImageZoom } from "./CardImage";
 import { ArrowLeft, Bulb, Close, Pencil, Undo } from "./icons";
@@ -397,6 +398,7 @@ export function ReviewSession(props: Props) {
                   )}
                   {!current.drill && current.back && <Markdown className="text-[1.06rem] leading-relaxed text-frost/95 sm:text-[1.15rem]">{current.back}</Markdown>}
                   {current.backImage && <CardImage url={images.get(current.backImage)} onZoom={setZoom} />}
+                  {!current.drill && current.examples && <WorkedExample examples={current.examples} reps={current.sched.reps} />}
                   {canExplain && (
                     <button
                       type="button"

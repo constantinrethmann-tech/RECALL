@@ -1,4 +1,5 @@
 import { parseDrill, solutionMarkdown, type CodeDrill } from "../drill";
+import { parseExamples } from "../examples";
 
 /**
  * Reading and checking a "recall-v1" deck (cards.json). Pure functions, no network.
@@ -24,6 +25,8 @@ export interface DeckCard {
   explain: string | null;
   /** Set for a code drill ("kind": "code" with a "code" exercise). */
   drill: CodeDrill | null;
+  /** Worked examples, simple → harder (markdown), or null. */
+  examples: string[] | null;
   tags: string[];
   source: string | null;
   /** Position in the file: new cards are studied in this order. */
@@ -167,6 +170,7 @@ export function parseDeck(raw: unknown, resolveImage?: (path: string) => string 
       backImage,
       explain: optText(card.explain ?? card.explanation),
       drill,
+      examples: parseExamples(card.examples),
       tags: normalizeTags(card.tags),
       source: optText(card.source),
       index: i,

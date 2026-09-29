@@ -1,5 +1,6 @@
 import { fsrs, generatorParameters, Rating, State, type Card, type FSRS, type Grade } from "ts-fsrs";
 import { parseDrill, type CodeDrill } from "./drill";
+import { parseExamples } from "./examples";
 import type { CardRow, ScheduleRow, StudyCard } from "./types";
 
 export { Rating, State };
@@ -55,6 +56,7 @@ export function rowToStudyCard(r: CardRow): StudyCard {
     backImage: r.back_image,
     explain: r.explain ?? null,
     drill: drillOf(r),
+    examples: parseExamples(r.extra?.examples),
     tags: r.tags ?? [],
     position: r.position,
     sched: rowToSchedule(r),

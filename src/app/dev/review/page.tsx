@@ -44,6 +44,7 @@ function sample(id: string, state: State, dueInMinutes: number, fields: Partial<
     backImage: null,
     explain: null,
     drill: null,
+    examples: null,
     tags: [],
     position: 0,
     ...fields,
@@ -80,6 +81,17 @@ function Preview() {
         }),
       ],
       [
+        sample("e1", State.New, 0, {
+          front: "How do you loop through a string using each character's index (position) instead of its value directly?",
+          back: "for index in range(len(text)): print(text[index])",
+          section: "07 – Loops",
+          explain: "`range(len(text))` gives the **positions** 0, 1, 2…, and `text[index]` fetches the character at each one.",
+          examples: [
+            '**Task:** Print each letter via its position.\n\n```python\ntext = "Hi!"\nfor index in range(len(text)):\n    print(text[index])\n```\n**Output:**\n```text\nH\ni\n!\n```\n\n💡 len is 3, so index is 0, 1, 2.',
+            "**Task:** level 2",
+            "**Task:** level 3",
+          ],
+        }),
         sample("d1", State.New, 0, {
           front: "Count the vowels",
           back: "",
