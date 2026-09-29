@@ -43,3 +43,31 @@ Rules:
   - `case-study-1`, `case-study-2`, … for cards needed for that case study,
   - otherwise no tag.
 - Pictures: PNG or JPG in `images/`, referenced as `"images/<file>"`; `null` when there is none.
+- Optional `explain`: a plain-language explanation (markdown) shown by the Explain button.
+
+**Programming (code drills).** For coding subjects, don't make "look at the answer" cards. Make exercises the app runs:
+
+```json
+{
+  "id": "py-loops-count-vowels",
+  "unit": "07 – Loops",
+  "section": "Count characters with a loop",
+  "kind": "code",
+  "code": {
+    "hints": ["counter = 0 before the loop.", "for char in text: if char in vowels: count += 1", "Print after the loop."],
+    "variants": [
+      {
+        "prompt": "Count the vowels in `text` with a `for` loop. Print `Number of vowels: <n>`.",
+        "setup": ["text = \"Programming\""],
+        "solution": ["count = 0", "for char in text:", "    if char in \"aeiouAEIOU\":", "        count += 1", "print(\"Number of vowels:\", count)"],
+        "tests": [{ "setup": ["text = \"AEIOU xyz\""] }]
+      }
+    ]
+  }
+}
+```
+
+- Python only. The app runs my code and compares its **printed output** with the `solution`'s output (spacing is ignored), also for every `tests` setup (hidden values, so typing the answer in doesn't count).
+- 3–4 `variants` per exercise: the same skill with different values, words and small twists. A different one is shown each time.
+- `setup`: given lines, shown to me. `inputs`: what `input()` returns, in order (e.g. `["7"]`). `check: ["grade"]` compares that variable instead of the output.
+- Say the exact output format in the prompt. Solutions use 4-space indentation. 2–3 hints, from vague to specific.
