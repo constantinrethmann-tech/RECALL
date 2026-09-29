@@ -153,7 +153,7 @@ export async function loadOverview(now = new Date()): Promise<Overview> {
 // ─── Study session ───────────────────────────────────────────────────────────
 
 export const CARD_COLUMNS =
-  "id,subject_id,unit_id,section,front,back,front_image,back_image,explain,tags,position,state,due,stability,difficulty,elapsed_days,scheduled_days,learning_steps,reps,lapses,last_review";
+  "id,subject_id,unit_id,section,front,back,front_image,back_image,explain,kind,extra,tags,position,state,due,stability,difficulty,elapsed_days,scheduled_days,learning_steps,reps,lapses,last_review";
 
 export interface StudyLoad {
   title: string;

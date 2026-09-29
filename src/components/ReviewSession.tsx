@@ -6,6 +6,8 @@ import { applySlowness, expectedThinkMs, slowness } from "@/lib/effort";
 import { formatInterval, GRADES, makeScheduler, Rating, rowToStudyCard, State, type Grade } from "@/lib/fsrs";
 import { afterRating, cramRequeue, LEARN_AHEAD_MS, nextLearningDue, pickNext, sessionCounts, type SessionState } from "@/lib/queue";
 import type { StudyCard, StudyMode } from "@/lib/types";
+import { preloadPython } from "@/lib/python";
+import { CodeDrillView } from "./CodeDrill";
 import { CardEditorModal, type EditorResult } from "./CardEditor";
 import { CardImage, ImageZoom } from "./CardImage";
 import { ArrowLeft, Bulb, Close, Pencil, Undo } from "./icons";
@@ -74,6 +76,9 @@ export function ReviewSession(props: Props) {
   const [zoom, setZoom] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
+  // Code drills: the rating suggested by the result, and a counter so every showing gets a fresh exercise.
+  const [suggested, setSuggested] = useState<Grade | null>(null);
+  const [drillKey, setDrillKey] = useState(0);
   const [reviewed, setReviewed] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -98,6 +103,8 @@ export function ReviewSession(props: Props) {
     setRevealed(false);
     setOutcomes(null);
     setExplaining(false);
+    setSuggested(null);
+    setDrillKey((k) => k + 1);
     shownAt.current = Date.now();
     interrupted.current = document.visibilityState === "hidden";
     scrollRef.current?.scrollTo({ top: 0 });
@@ -117,6 +124,12 @@ export function ReviewSession(props: Props) {
       window.removeEventListener("blur", away);
     };
   }, []);
+
+  // Start downloading Python early if this session has code drills.
+  const hasDrills = useMemo(() => [...initial.main, ...initial.learning].some((c) => c.drill), [initial]);
+  useEffect(() => {
+    if (hasDrills) preloadPython().catch(() => {});
+  }, [hasDrills]);
 
   // Load (and pre-load) pictures for this card and the next few. Each picture is requested once.
   useEffect(() => {
@@ -154,7 +167,7 @@ export function ReviewSession(props: Props) {
     setRevealed(true);
     if (!cram) {
       const thinkMs = at.getTime() - shownAt.current;
-      const s = slowness(thinkMs, expectedThinkMs(thinkBaselineMs, current.front, !!current.frontImage), interrupted.current);
+      const s = current.drill ? 0 : slowness(thinkMs, expectedThinkMs(thinkBaselineMs, current.front, !!current.frontImage), interrupted.current);
       const record = applySlowness(scheduler.repeat(current.sched, at), current.sched.state, s, at);
       setOutcomes({ at, record, thinkMs: interrupted.current ? -1 : thinkMs });
     }
@@ -279,8 +292,9 @@ export function ReviewSession(props: Props) {
       setExplaining(true);
     } else if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
-      if (!revealed) reveal();
-      else rate(Rating.Good);
+      if (!revealed) {
+        if (!current?.drill) reveal();
+      } else rate(suggested ?? Rating.Good);
     } else if (revealed && !e.ctrlKey && ["1", "2", "3", "4"].includes(e.key)) {
       rate(Number(e.key) as Grade);
     } else if (e.key.toLowerCase() === "z") {
@@ -334,8 +348,8 @@ export function ReviewSession(props: Props) {
 
       <main
         ref={scrollRef}
-        onClick={current && !revealed ? reveal : undefined}
-        className={`min-h-0 flex-1 overflow-y-auto ${current && !revealed ? "cursor-pointer" : ""}`}
+        onClick={current && !revealed && !current.drill ? reveal : undefined}
+        className={`min-h-0 flex-1 overflow-y-auto ${current && !revealed && !current.drill ? "cursor-pointer" : ""}`}
       >
         <div className="mx-auto max-w-2xl px-5 pb-10 pt-7 sm:px-8 lg:pt-14">
           {saveError && (
@@ -356,15 +370,30 @@ export function ReviewSession(props: Props) {
                 <span className="text-seam-3">/</span>
                 <span className="normal-case tracking-[0.06em]">{describe(current)}</span>
               </p>
-              {current.front && <Markdown className="text-[1.3rem] leading-snug sm:text-[1.55rem]">{current.front}</Markdown>}
+              {current.drill ? (
+                <CodeDrillView
+                  key={`${current.id}-${drillKey}`}
+                  cardId={current.id}
+                  drill={current.drill}
+                  done={revealed}
+                  onDone={(r) => {
+                    setSuggested(r.grade);
+                    reveal();
+                  }}
+                />
+              ) : (
+                <>
+                {current.front && <Markdown className="text-[1.3rem] leading-snug sm:text-[1.55rem]">{current.front}</Markdown>}
               {current.frontImage && <CardImage url={images.get(current.frontImage)} onZoom={setZoom} />}
+                </>
+              )}
 
               {revealed && (
                 <div ref={answerRef} className="animate-[fadeIn_.25s_ease-out]">
                   <div className="relative my-7 h-px bg-seam-2">
                     <span className="absolute -top-[3px] left-0 h-[7px] w-[7px] rounded-full bg-ion shadow-[0_0_12px_2px_rgba(143,179,255,.45)]" />
                   </div>
-                  {current.back && <Markdown className="text-[1.06rem] leading-relaxed text-frost/95 sm:text-[1.15rem]">{current.back}</Markdown>}
+                  {!current.drill && current.back && <Markdown className="text-[1.06rem] leading-relaxed text-frost/95 sm:text-[1.15rem]">{current.back}</Markdown>}
                   {current.backImage && <CardImage url={images.get(current.backImage)} onZoom={setZoom} />}
                   {canExplain && (
                     <button
@@ -389,7 +418,9 @@ export function ReviewSession(props: Props) {
       {current && (
         <footer className="pb-safe shrink-0 border-t border-seam bg-void/95 px-3 pt-3 backdrop-blur">
           <div className="mx-auto max-w-2xl">
-            {!revealed ? (
+            {!revealed && current.drill ? (
+              <p className="flex h-16 items-center justify-center text-center text-[13.5px] text-dust">Type your code above, then press Check. Hints if you&apos;re stuck.</p>
+            ) : !revealed ? (
               <button
                 onClick={reveal}
                 className="flex h-16 w-full items-center justify-center gap-3 rounded-2xl border border-ion/40 bg-hull-2 text-[15px] tracking-wide text-ion transition-colors hover:bg-hull-3 active:scale-[.99]"
@@ -403,7 +434,7 @@ export function ReviewSession(props: Props) {
                   <button
                     key={grade}
                     onClick={() => rate(grade)}
-                    className="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border border-seam-2 bg-hull-2 transition-colors hover:border-seam-3 hover:bg-hull-3 active:scale-[.97]"
+                    className={`flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border bg-hull-2 transition-colors hover:border-seam-3 hover:bg-hull-3 active:scale-[.97] ${suggested === grade ? "border-ion/70 shadow-[0_0_0_1px_rgba(143,179,255,.35)]" : "border-seam-2"}`}
                   >
                     <span className={`font-mono text-[11px] ${gradeColor[grade]}`}>
                       {cram ? cramLabel[grade] : outcomes && formatInterval(outcomes.at, outcomes.record[grade].card.due)}

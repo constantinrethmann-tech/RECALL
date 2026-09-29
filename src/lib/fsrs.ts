@@ -1,4 +1,5 @@
 import { fsrs, generatorParameters, Rating, State, type Card, type FSRS, type Grade } from "ts-fsrs";
+import { parseDrill, type CodeDrill } from "./drill";
 import type { CardRow, ScheduleRow, StudyCard } from "./types";
 
 export { Rating, State };
@@ -35,6 +36,13 @@ export function rowToSchedule(r: ScheduleRow): Card {
   };
 }
 
+/** The exercise of a code drill (null for flashcards or a broken drill). */
+function drillOf(r: CardRow): CodeDrill | null {
+  if (r.kind !== "code") return null;
+  const drill = parseDrill(r.extra?.drill);
+  return typeof drill === "string" ? null : drill;
+}
+
 export function rowToStudyCard(r: CardRow): StudyCard {
   return {
     id: r.id,
@@ -46,6 +54,7 @@ export function rowToStudyCard(r: CardRow): StudyCard {
     frontImage: r.front_image,
     backImage: r.back_image,
     explain: r.explain ?? null,
+    drill: drillOf(r),
     tags: r.tags ?? [],
     position: r.position,
     sched: rowToSchedule(r),

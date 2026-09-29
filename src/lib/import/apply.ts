@@ -134,6 +134,8 @@ export async function applyImport(
     tags: c.tags,
     source: c.source,
     position: c.index,
+    kind: c.drill ? "code" : "basic",
+    extra: c.drill ? { drill: c.drill } : null,
     updated_at: now,
   });
   const explained = deck.cards.filter((c) => c.explain).map((c) => ({ ...base(c), explain: c.explain }));

@@ -43,6 +43,7 @@ function sample(id: string, state: State, dueInMinutes: number, fields: Partial<
     frontImage: null,
     backImage: null,
     explain: null,
+    drill: null,
     tags: [],
     position: 0,
     ...fields,

@@ -1,4 +1,5 @@
 import type { Card } from "ts-fsrs";
+import type { CodeDrill } from "./drill";
 
 export interface SubjectRow {
   id: string;
@@ -38,6 +39,10 @@ export interface CardRow extends ScheduleRow {
   back_image: string | null;
   /** Plain-language explanation (markdown), shown by the Explain button. */
   explain: string | null;
+  /** "basic" flashcard or "code" drill. */
+  kind: string;
+  /** Extra data; for code drills { drill: CodeDrill }. */
+  extra: Record<string, unknown> | null;
   tags: string[];
   position: number;
 }
@@ -53,6 +58,8 @@ export interface StudyCard {
   frontImage: string | null;
   backImage: string | null;
   explain: string | null;
+  /** Set for code drills (kind "code"). */
+  drill: CodeDrill | null;
   tags: string[];
   position: number;
   sched: Card;

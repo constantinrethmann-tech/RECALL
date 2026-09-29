@@ -19,6 +19,7 @@ function card(id: string, state: State, due: Date, extra: Partial<StudyCard> = {
     frontImage: null,
     backImage: null,
     explain: null,
+    drill: null,
     tags: [],
     position: 0,
     sched: { ...createEmptyCard(NOW), state, due },

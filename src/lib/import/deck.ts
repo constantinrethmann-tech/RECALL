@@ -1,3 +1,5 @@
+import { parseDrill, solutionMarkdown, type CodeDrill } from "../drill";
+
 /**
  * Reading and checking a "recall-v1" deck (cards.json). Pure functions, no network.
  */
@@ -20,6 +22,8 @@ export interface DeckCard {
   backImage: string | null;
   /** Plain-language explanation (markdown), or null. */
   explain: string | null;
+  /** Set for a code drill ("kind": "code" with a "code" exercise). */
+  drill: CodeDrill | null;
   tags: string[];
   source: string | null;
   /** Position in the file: new cards are studied in this order. */
@@ -139,8 +143,15 @@ export function parseDeck(raw: unknown, resolveImage?: (path: string) => string 
       return resolved;
     };
 
-    const front = typeof card.front === "string" ? card.front.trim() : "";
-    const back = typeof card.back === "string" ? card.back.trim() : "";
+    let drill: CodeDrill | null = null;
+    if (card.kind === "code") {
+      const parsed = parseDrill(card.code);
+      if (typeof parsed === "string") return addError(`"${id}": ${parsed}.`);
+      drill = parsed;
+    }
+    // A drill's front/back are only for browsing: its first prompt and model solution.
+    const front = (typeof card.front === "string" ? card.front.trim() : "") || (drill?.variants[0].prompt ?? "");
+    const back = (typeof card.back === "string" ? card.back.trim() : "") || (drill ? solutionMarkdown(drill.variants[0]) : "");
     const frontImage = image("front_image");
     const backImage = image("back_image");
     if (!front && !frontImage) return addError(`"${id}" has an empty front.`);
@@ -155,6 +166,7 @@ export function parseDeck(raw: unknown, resolveImage?: (path: string) => string 
       frontImage,
       backImage,
       explain: optText(card.explain ?? card.explanation),
+      drill,
       tags: normalizeTags(card.tags),
       source: optText(card.source),
       index: i,
