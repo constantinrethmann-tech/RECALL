@@ -71,7 +71,11 @@ export function parseDeck(raw: unknown, resolveImage?: (path: string) => string 
   const warnings: string[] = [];
   const fail = (msg: string): ParseResult => ({ deck: null, errors: [msg], warnings });
 
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fail("cards.json is not a JSON object.");
+  if (Array.isArray(raw))
+    return fail(
+      'cards.json is a plain list of cards. RECALL needs the "recall-v1" format: a subject name, units, and an "id" for every card (see CLAUDE-IMPORT-PROMPT.md).',
+    );
+  if (!raw || typeof raw !== "object") return fail("cards.json is not a JSON object.");
   const obj = raw as Record<string, unknown>;
 
   if (obj.format === undefined) warnings.push(`No "format" field; assuming "${DECK_FORMAT}".`);
