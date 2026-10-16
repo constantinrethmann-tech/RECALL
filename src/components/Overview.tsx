@@ -5,9 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { loadOverview, type Overview } from "@/lib/data";
 import { sameScope, studyHref } from "@/lib/scope";
 import { getSupabase } from "@/lib/supabase";
-import { sortTags, tagLabel } from "@/lib/tags";
+import { isSectionTag, sortTags, tagLabel } from "@/lib/tags";
 import type { Scope, StudyMode, TagCounts, UnitRow } from "@/lib/types";
-import { Chevron, Flame, Pencil, Play } from "./icons";
+import { Chevron, Flame, Pencil, Play, Target } from "./icons";
 import { ButtonLink, Counts } from "./ui";
 
 /** Overview data that refreshes when the app comes back into view and when cards change on another device. */
@@ -158,6 +158,7 @@ function useOpenSet(storageKey: string) {
 export function OverviewList({ data, active, mode }: { data: Overview; active?: Scope; mode: StudyMode }) {
   const [openSubjects, toggleSubject] = useOpenSet("recall-open-subjects");
   const [openUnits, toggleUnit] = useOpenSet("recall-open-units");
+  const [openSections, toggleSection] = useOpenSet("recall-open-sections");
   if (!data.subjects.length) return <EmptyState />;
   const cram = mode === "cram";
   return (
@@ -166,7 +167,10 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
         const st = subjectTotals(data, s.id);
         const newLeft = Math.min(data.newLeft.get(s.id) ?? 0, data.newLeftTotal);
         const units = data.units.filter((u) => u.subject_id === s.id && data.counts.has(u.id));
-        const tags = sortTags((data.tags.get(s.id) ?? []).map((t) => t.tag)).map((tag) => data.tags.get(s.id)!.find((t) => t.tag === tag)!);
+        const allTags = sortTags((data.tags.get(s.id) ?? []).map((t) => t.tag)).map((tag) => data.tags.get(s.id)!.find((t) => t.tag === tag)!);
+        // Section tags (midterm, final…) get their own foldable block; the others stay chips.
+        const sections = allTags.filter((t) => isSectionTag(t.tag));
+        const tags = allTags.filter((t) => !isSectionTag(t.tag));
         const isOpen = openSubjects.has(s.id);
         // "<topic> · Code" units hang under their topic.
         const byName = new Map(units.map((u) => [u.name, u]));
@@ -176,13 +180,14 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
           if (parent) codeUnitOf.set(parent.id, u);
         }
         const children = new Set([...codeUnitOf.values()].map((u) => u.id));
-        const unitLink = (u: UnitRow, label: string, code = false) => {
-          const c = data.counts.get(u.id)!;
+        const unitLink = (u: UnitRow, label: string, code = false, tag?: string) => {
+          const c = tag ? data.sections.get(tag)!.get(u.id)! : data.counts.get(u.id)!;
+          const scope: Scope = tag ? { unitId: u.id, tag } : { unitId: u.id };
           const pct = c.total ? Math.round((c.seen_count / c.total) * 100) : 0;
           return (
             <Link
-              href={studyHref({ unitId: u.id }, mode)}
-              className={`flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, { unitId: u.id }) ? "bg-hull-2" : ""}`}
+              href={studyHref(scope, mode)}
+              className={`flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, scope) ? "bg-hull-2" : ""}`}
             >
               <div className="min-w-0 flex-1">
                 <p className={`flex items-center gap-2 truncate text-[14px] ${code ? "text-mist" : "text-frost"}`}>
@@ -231,6 +236,53 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
                 <Play width={16} height={16} />
               </Link>
             </div>
+
+            {isOpen &&
+              sections.map((t) => {
+                const key = `${s.id}:${t.tag}`;
+                const sectionUnits = units.filter((u) => data.sections.get(t.tag)?.has(u.id));
+                const sectionOpen = openSections.has(key) || sectionUnits.some((u) => sameScope(active, { unitId: u.id, tag: t.tag }));
+                return (
+                  <div key={t.tag} className="mx-1 mt-2 rounded-2xl border border-ion/25 bg-hull/60">
+                    <div className={`flex items-center gap-2 rounded-2xl py-1 pl-1 pr-1 ${sameScope(active, { subjectId: s.id, tag: t.tag }) ? "bg-hull-2" : ""}`}>
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(key)}
+                        aria-expanded={sectionOpen}
+                        title={sectionOpen ? `Fold ${tagLabel(t.tag)}` : `Show ${tagLabel(t.tag)} topics`}
+                        className="group flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-xl pl-1.5 text-left"
+                      >
+                        <Chevron width={15} height={15} className={`shrink-0 text-dust transition-transform duration-200 group-hover:text-ion ${sectionOpen ? "rotate-90" : ""}`} />
+                        <Target width={16} height={16} className="shrink-0 text-ion" />
+                        <span className="min-w-0 flex-1 truncate text-[14px] text-frost">{tagLabel(t.tag)}</span>
+                        <span className="font-mono text-[10.5px] text-dust">{t.total} cards</span>
+                      </button>
+                      {cram ? (
+                        <span className="font-mono text-[12px] text-ion">{t.total}</span>
+                      ) : (
+                        <Counts fresh={Math.min(t.new_count, newLeft)} learning={t.learning_count} due={t.due_count} />
+                      )}
+                      <Link
+                        href={studyHref({ subjectId: s.id, tag: t.tag }, mode)}
+                        aria-label={`${cram ? "Cram" : "Study"} all ${tagLabel(t.tag)} cards of ${s.name}`}
+                        title={`${cram ? "Cram" : "Study"} all ${tagLabel(t.tag)} cards`}
+                        className="ml-1 grid h-10 w-10 place-items-center rounded-full border border-seam-2 text-ion transition-colors hover:border-ion/50 hover:bg-hull-2"
+                      >
+                        <Play width={16} height={16} />
+                      </Link>
+                    </div>
+                    {sectionOpen && (
+                      <div className="animate-[fadeIn_.2s_ease-out] space-y-0.5 px-1 pb-1.5">
+                        {sectionUnits.map((u) => (
+                          <div key={u.id} className="flex">
+                            {unitLink(u, u.name, false, t.tag)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
             {isOpen && (
               <div className="mt-1.5 animate-[fadeIn_.2s_ease-out] space-y-0.5">

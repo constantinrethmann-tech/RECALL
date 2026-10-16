@@ -92,3 +92,11 @@ export const Bulb = (p: SVGProps<SVGSVGElement>) => (
     <path d="M12 3a6 6 0 0 0-3.7 10.7c.7.6 1.2 1.4 1.2 2.3v.3h5v-.3c0-.9.5-1.7 1.2-2.3A6 6 0 0 0 12 3z" />
   </Icon>
 );
+
+export const Target = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="4.5" />
+    <circle cx="12" cy="12" r="0.8" fill="currentColor" />
+  </Icon>
+);

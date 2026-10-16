@@ -12,12 +12,23 @@ export default function DevOverviewPage() {
     { id: `u${i}`, subject_id: "py", name: t, position: 2 * i + 1 },
     { id: `c${i}`, subject_id: "py", name: `${t} · Code`, position: 2 * i + 2 },
   ]);
+  const microTopics = ["01 – Foundations and PPC", "02 – Elasticity", "04 – Behavioural Economics", "06 – Government Intervention"];
+  const microUnits = microTopics.map((t, i) => ({ id: `m${i}`, subject_id: "mi", name: t, position: i + 1 }));
+  const midterm = new Map(
+    microUnits.filter((u) => u.id !== "m2").map((u, i) => [u.id, { unit_id: u.id, total: 12 + i, new_count: 4, learning_count: 1, due_count: 3, seen_count: 6, trouble_count: 0 }]),
+  );
   const data: Overview = {
-    subjects: [{ id: "py", name: "Python Programming", position: 0 }],
-    units,
-    counts: new Map(units.map((u, i) => [u.id, { unit_id: u.id, total: 10 + i, new_count: 5, learning_count: 1, due_count: 2, seen_count: i, trouble_count: 0 }])),
-    tags: new Map([["py", [{ subject_id: "py", tag: "flashcards", total: 30, new_count: 10, learning_count: 0, due_count: 3 }, { subject_id: "py", tag: "write-code", total: 9, new_count: 9, learning_count: 0, due_count: 0 }]]]),
-    newLeft: new Map([["py", 20]]),
+    subjects: [
+      { id: "py", name: "Python Programming", position: 0 },
+      { id: "mi", name: "Microeconomics", position: 1 },
+    ],
+    units: [...units, ...microUnits],
+    counts: new Map([...units, ...microUnits].map((u, i) => [u.id, { unit_id: u.id, total: 10 + i, new_count: 5, learning_count: 1, due_count: 2, seen_count: i, trouble_count: 0 }])),
+    tags: new Map([["py", [{ subject_id: "py", tag: "flashcards", total: 30, new_count: 10, learning_count: 0, due_count: 3 }, { subject_id: "py", tag: "write-code", total: 9, new_count: 9, learning_count: 0, due_count: 0 }]],
+      ["mi", [{ subject_id: "mi", tag: "midterm", total: 51, new_count: 12, learning_count: 3, due_count: 9 }, { subject_id: "mi", tag: "diagram", total: 20, new_count: 5, learning_count: 0, due_count: 2 }]],
+    ]),
+    sections: new Map([["midterm", midterm]]),
+    newLeft: new Map([["py", 20], ["mi", 20]]),
     newLeftTotal: 30,
     reviewedToday: 0,
     streak: 0,

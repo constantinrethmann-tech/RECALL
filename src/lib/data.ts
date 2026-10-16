@@ -6,7 +6,7 @@ import { makeScheduler, rowToStudyCard, State } from "./fsrs";
 import { chooseNewCards, planSession, shuffle, type NewCandidate, type SessionState } from "./queue";
 import { computeStreak, isoDay } from "./streak";
 import { getSupabase } from "./supabase";
-import { tagLabel } from "./tags";
+import { isSectionTag, tagLabel } from "./tags";
 import {
   DEFAULT_SETTINGS,
   type CardRow,
@@ -113,6 +113,8 @@ export interface Overview {
   counts: Map<string, UnitCounts>;
   /** Per subject: its tags with counts. */
   tags: Map<string, TagCounts[]>;
+  /** Section tags (midterm, final…): per tag, the counts of its cards in each unit. */
+  sections: Map<string, Map<string, UnitCounts>>;
   newLeft: Map<string, number>;
   /** New cards still allowed today, all subjects together. */
   newLeftTotal: number;
@@ -142,12 +144,46 @@ export async function loadOverview(now = new Date()): Promise<Overview> {
     ...tree,
     counts: new Map(counts.map((c) => [c.unit_id, c])),
     tags,
+    sections: await loadSections([...new Set(tagRows.map((t) => t.tag).filter(isSectionTag))], end),
     newLeft: remainingNew(tree.subjects, today, settings),
     newLeftTotal: totalNewLeft(today, settings),
     reviewedToday,
     streak,
     settings,
   };
+}
+
+interface SectionCardRow {
+  unit_id: string;
+  tags: string[];
+  state: number;
+  due: string;
+  lapses: number;
+  difficulty: number;
+}
+
+/** Per section tag and unit: the same counts as unit_counts, but only for the tagged cards. */
+async function loadSections(sectionTags: string[], dayEnd: Date): Promise<Map<string, Map<string, UnitCounts>>> {
+  const sections = new Map<string, Map<string, UnitCounts>>();
+  if (!sectionTags.length) return sections;
+  const sb = getSupabase();
+  const rows = await fetchAll<SectionCardRow>("exam sections", (from, to) =>
+    sb.from("cards").select("unit_id,tags,state,due,lapses,difficulty").overlaps("tags", sectionTags).eq("suspended", false).order("id").range(from, to),
+  );
+  for (const r of rows)
+    for (const tag of r.tags.filter((t) => sectionTags.includes(t))) {
+      const units = sections.get(tag) ?? new Map<string, UnitCounts>();
+      sections.set(tag, units);
+      const c = units.get(r.unit_id) ?? { unit_id: r.unit_id, total: 0, new_count: 0, learning_count: 0, due_count: 0, seen_count: 0, trouble_count: 0 };
+      units.set(r.unit_id, c);
+      c.total++;
+      if (r.state === State.New) c.new_count++;
+      else c.seen_count++;
+      if (r.state === State.Learning || r.state === State.Relearning) c.learning_count++;
+      if (r.state === State.Review && new Date(r.due) < dayEnd) c.due_count++;
+      if (r.state !== State.New && (r.lapses >= 2 || r.difficulty >= 7.5)) c.trouble_count++;
+    }
+  return sections;
 }
 
 // ─── Study session ───────────────────────────────────────────────────────────

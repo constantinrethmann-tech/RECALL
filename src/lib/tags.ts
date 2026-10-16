@@ -1,3 +1,8 @@
+/** Tags shown as their own foldable section of units (e.g. "midterm"), not as a chip. */
+export function isSectionTag(tag: string): boolean {
+  return /^(midterm|final|exam)(-.+)?$/i.test(tag) && !/^exam-extra$/i.test(tag);
+}
+
 /** "exam" → "Exam", "case-study-1" → "Case study 1". */
 export function tagLabel(tag: string): string {
   const words = tag.replace(/[-_]+/g, " ").trim();
