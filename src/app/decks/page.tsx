@@ -31,7 +31,7 @@ function Decks() {
   return (
     <PageShell title="Subjects & units">
       <p className="text-[13.5px] text-mist">
-        <strong className="font-normal text-frost">New round</strong> makes every card of a unit (or a whole subject) due again, to bring it back into your head. Your progress and memory history stay; the unit then shows 100 % for each finished round plus the new round&apos;s share (120 %, 200 %…). Deleting removes cards and progress for good.
+        <strong className="font-normal text-frost">New round</strong> turns every studied card of a unit (or a whole subject) back into a new card, so you learn it again from scratch. Your review history stays, and the unit counts its rounds: 100 % for each finished round plus the new round&apos;s share (120 %, 200 %…). Tip: while you relearn, raise “New cards per day” and “New cards per subject” in Settings, or only 20 come back each day. Deleting removes cards and progress for good.
       </p>
       {error && (
         <div className="mt-5">
@@ -51,7 +51,7 @@ function Decks() {
                 name={s.name}
                 detail={`${units.length} ${units.length === 1 ? "unit" : "units"} · ${cardsLabel(total)}`}
                 deleteWarning={total ? `Delete “${s.name}” with all ${cardsLabel(total)}?` : `Delete “${s.name}”?`}
-                roundWarning={`Start a new round for all ${units.length} units of “${s.name}”? All their cards become due again; your progress stays.`}
+                roundWarning={`Start a new round for all ${units.length} units of “${s.name}”? All their studied cards become new again; your review history stays.`}
                 onRound={total ? () => startRound(units).then(reload) : undefined}
                 onRename={(name) => renameSubject(s.id, name).then(reload)}
                 onDelete={() => deleteSubject(s.id).then(reload)}
@@ -68,7 +68,7 @@ function Decks() {
                           name={u.name}
                           detail={u.rounds ? `${cardsLabel(n)} · round ${u.rounds + 1}` : cardsLabel(n)}
                           deleteWarning={n ? `Delete “${u.name}” with its ${cardsLabel(n)}?` : `Delete “${u.name}”?`}
-                          roundWarning={`Start a new round for “${u.name}”? Its ${cardsLabel(n)} become due again; your progress stays.`}
+                          roundWarning={`Start a new round for “${u.name}”? Its ${cardsLabel(n)} become new again; your review history stays.`}
                           onRound={n ? () => startRound([u]).then(reload) : undefined}
                           onRename={(name) => renameUnit(u.id, name).then(reload)}
                           onDelete={() => deleteUnit(u.id).then(reload)}

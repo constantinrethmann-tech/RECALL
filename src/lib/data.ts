@@ -87,12 +87,24 @@ async function loadRoundProgress(units: UnitRow[]): Promise<Map<string, number>>
   return done;
 }
 
-/** Starts a new round: every reviewed card of these units is due again now (memory history stays), and each unit counts one more round. */
+/**
+ * Starts a new round: every studied card of these units becomes a new (blue) card again, to be learned from scratch.
+ * Review history, repetitions and lapses stay. Each unit counts one more round, except when its current round
+ * hasn't been started yet (pressing twice doesn't count twice) or it has nothing studied to reset.
+ */
 export async function startRound(units: UnitRow[]): Promise<void> {
   if (!units.length) return;
   const sb = getSupabase();
   const now = new Date().toISOString();
+  const ids = units.map((u) => u.id);
+  const rows = await fetchAll<{ unit_id: string; state: number; last_review: string | null }>("cards", (from, to) =>
+    sb.from("cards").select("unit_id,state,last_review").in("unit_id", ids).order("id").range(from, to),
+  );
   for (const u of units) {
+    const mine = rows.filter((r) => r.unit_id === u.id);
+    const studied = mine.some((r) => r.state !== State.New);
+    const roundUntouched = !!u.round_started_at && !mine.some((r) => r.last_review && new Date(r.last_review) >= new Date(u.round_started_at!));
+    if (!studied || roundUntouched) continue;
     const res = await sb.from("units").update({ rounds: (u.rounds ?? 0) + 1, round_started_at: now }).eq("id", u.id);
     if (res.error) {
       if (/rounds|round_started_at/.test(res.error.message))
@@ -100,8 +112,12 @@ export async function startRound(units: UnitRow[]): Promise<void> {
       throw new Error(`Couldn't start the round: ${res.error.message}`);
     }
   }
-  const cards = await sb.from("cards").update({ due: now }).in("unit_id", units.map((u) => u.id)).eq("state", State.Review);
-  if (cards.error) throw new Error(`Couldn't make the cards due: ${cards.error.message}`);
+  const cards = await sb
+    .from("cards")
+    .update({ state: State.New, due: now, stability: 0, difficulty: 0, elapsed_days: 0, scheduled_days: 0, learning_steps: 0, last_review: null })
+    .in("unit_id", ids)
+    .neq("state", State.New);
+  if (cards.error) throw new Error(`Couldn't reset the cards: ${cards.error.message}`);
 }
 
 async function loadToday(dayStart: Date): Promise<Map<string | null, TodayCounts>> {
