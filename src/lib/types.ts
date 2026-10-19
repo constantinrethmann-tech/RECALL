@@ -12,6 +12,9 @@ export interface UnitRow {
   subject_id: string;
   name: string;
   position: number;
+  /** How many "new rounds" were started (0 before the first). Missing until migration 0002 has run. */
+  rounds?: number;
+  round_started_at?: string | null;
 }
 
 /** The FSRS columns of a card row, as they come from the database. */

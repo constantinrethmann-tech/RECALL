@@ -183,7 +183,11 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
         const unitLink = (u: UnitRow, label: string, code = false, tag?: string) => {
           const c = tag ? data.sections.get(tag)!.get(u.id)! : data.counts.get(u.id)!;
           const scope: Scope = tag ? { unitId: u.id, tag } : { unitId: u.id };
-          const pct = c.total ? Math.round((c.seen_count / c.total) * 100) : 0;
+          // In a round: 100 % per finished round plus this round's share (bar = this round only).
+          const rounds = tag ? 0 : (u.rounds ?? 0);
+          const share = rounds ? Math.min(1, (data.roundDone.get(u.id) ?? 0) / (c.total || 1)) : c.total ? c.seen_count / c.total : 0;
+          const pct = Math.round(share * 100);
+          const shown = rounds * 100 + pct;
           return (
             <Link
               href={studyHref(scope, mode)}
@@ -198,7 +202,9 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
                   <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-seam">
                     <div className="h-full rounded-full bg-ion/70" style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="w-9 text-right font-mono text-[10px] text-dust">{pct}%</span>
+                  <span className={`w-10 text-right font-mono text-[10px] ${rounds ? "text-ion" : "text-dust"}`} title={rounds ? `Round ${rounds + 1}: ${pct}% of the cards reviewed again` : undefined}>
+                    {shown}%
+                  </span>
                 </div>
               </div>
               {cram ? (
@@ -341,7 +347,7 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
       })}
       <Link href="/decks/" className="mx-2 mt-2 inline-flex h-10 items-center gap-2 rounded-full px-2 text-[12.5px] text-dust transition-colors hover:text-frost">
         <Pencil width={14} height={14} />
-        Edit subjects &amp; units
+        Edit units · new round
       </Link>
     </div>
   );

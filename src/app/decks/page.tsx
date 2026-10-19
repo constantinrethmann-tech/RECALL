@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { RequireAuth } from "@/components/auth";
 import { PageShell } from "@/components/PageShell";
 import { Button, ErrorNote, Splash } from "@/components/ui";
+import { startRound } from "@/lib/data";
 import { deleteSubject, deleteUnit, loadDeckTree, renameSubject, renameUnit, type DeckTree } from "@/lib/decks";
 
 export default function DecksPage() {
@@ -30,7 +31,7 @@ function Decks() {
   return (
     <PageShell title="Subjects & units">
       <p className="text-[13.5px] text-mist">
-        Rename or delete subjects and units. Deleting also removes their cards and review progress, for good.
+        <strong className="font-normal text-frost">New round</strong> makes every card of a unit (or a whole subject) due again, to bring it back into your head. Your progress and memory history stay; the unit then shows 100 % for each finished round plus the new round&apos;s share (120 %, 200 %…). Deleting removes cards and progress for good.
       </p>
       {error && (
         <div className="mt-5">
@@ -50,6 +51,8 @@ function Decks() {
                 name={s.name}
                 detail={`${units.length} ${units.length === 1 ? "unit" : "units"} · ${cardsLabel(total)}`}
                 deleteWarning={total ? `Delete “${s.name}” with all ${cardsLabel(total)}?` : `Delete “${s.name}”?`}
+                roundWarning={`Start a new round for all ${units.length} units of “${s.name}”? All their cards become due again; your progress stays.`}
+                onRound={total ? () => startRound(units).then(reload) : undefined}
                 onRename={(name) => renameSubject(s.id, name).then(reload)}
                 onDelete={() => deleteSubject(s.id).then(reload)}
                 onError={setError}
@@ -63,8 +66,10 @@ function Decks() {
                         <EditableRow
                           kind="unit"
                           name={u.name}
-                          detail={cardsLabel(n)}
+                          detail={u.rounds ? `${cardsLabel(n)} · round ${u.rounds + 1}` : cardsLabel(n)}
                           deleteWarning={n ? `Delete “${u.name}” with its ${cardsLabel(n)}?` : `Delete “${u.name}”?`}
+                          roundWarning={`Start a new round for “${u.name}”? Its ${cardsLabel(n)} become due again; your progress stays.`}
+                          onRound={n ? () => startRound([u]).then(reload) : undefined}
                           onRename={(name) => renameUnit(u.id, name).then(reload)}
                           onDelete={() => deleteUnit(u.id).then(reload)}
                           onError={setError}
@@ -87,19 +92,23 @@ function EditableRow({
   name,
   detail,
   deleteWarning,
+  roundWarning,
   onRename,
   onDelete,
+  onRound,
   onError,
 }: {
   kind: "subject" | "unit";
   name: string;
   detail: string;
   deleteWarning: string;
+  roundWarning: string;
+  onRound?: () => Promise<unknown>;
   onRename: (name: string) => Promise<unknown>;
   onDelete: () => Promise<unknown>;
   onError: (message: string | null) => void;
 }) {
-  const [mode, setMode] = useState<"view" | "rename" | "delete">("view");
+  const [mode, setMode] = useState<"view" | "rename" | "delete" | "round">("view");
   const [draft, setDraft] = useState(name);
   const [busy, setBusy] = useState(false);
 
@@ -143,6 +152,19 @@ function EditableRow({
       </div>
     );
 
+  if (mode === "round" && onRound)
+    return (
+      <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${pad}`}>
+        <span className="min-w-0 flex-1 basis-56 text-[14px] text-frost">{roundWarning}</span>
+        <Button variant="text" className="text-ion" onClick={() => run(onRound)} disabled={busy}>
+          {busy ? "Starting…" : "Yes, new round"}
+        </Button>
+        <Button variant="text" onClick={() => setMode("view")} disabled={busy}>
+          No
+        </Button>
+      </div>
+    );
+
   if (mode === "delete")
     return (
       <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${pad}`}>
@@ -162,6 +184,11 @@ function EditableRow({
         <p className={kind === "subject" ? "truncate font-display text-[11px] uppercase tracking-[0.2em] text-frost" : "truncate text-[14px] text-frost"}>{name}</p>
         <p className="mt-1 font-mono text-[11px] text-dust">{detail}</p>
       </div>
+      {onRound && (
+        <Button variant="text" className="text-ion" onClick={() => setMode("round")}>
+          New round
+        </Button>
+      )}
       <Button
         variant="text"
         onClick={() => {

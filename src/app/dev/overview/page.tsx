@@ -13,7 +13,7 @@ export default function DevOverviewPage() {
     { id: `c${i}`, subject_id: "py", name: `${t} · Code`, position: 2 * i + 2 },
   ]);
   const microTopics = ["01 – Foundations and PPC", "02 – Elasticity", "04 – Behavioural Economics", "06 – Government Intervention"];
-  const microUnits = microTopics.map((t, i) => ({ id: `m${i}`, subject_id: "mi", name: t, position: i + 1 }));
+  const microUnits = microTopics.map((t, i) => ({ id: `m${i}`, subject_id: "mi", name: t, position: i + 1, rounds: i === 1 ? 1 : 0, round_started_at: i === 1 ? "2026-10-19T08:00:00Z" : null }));
   const midterm = new Map(
     microUnits.filter((u) => u.id !== "m2").map((u, i) => [u.id, { unit_id: u.id, total: 12 + i, new_count: 4, learning_count: 1, due_count: 3, seen_count: 6, trouble_count: 0 }]),
   );
@@ -28,6 +28,7 @@ export default function DevOverviewPage() {
       ["mi", [{ subject_id: "mi", tag: "midterm", total: 51, new_count: 12, learning_count: 3, due_count: 9 }, { subject_id: "mi", tag: "diagram", total: 20, new_count: 5, learning_count: 0, due_count: 2 }]],
     ]),
     sections: new Map([["midterm", midterm]]),
+    roundDone: new Map([["m1", 3]]),
     newLeft: new Map([["py", 20], ["mi", 20]]),
     newLeftTotal: 30,
     reviewedToday: 0,

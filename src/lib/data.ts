@@ -62,11 +62,46 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 export async function loadTree(): Promise<{ subjects: SubjectRow[]; units: UnitRow[] }> {
   const sb = getSupabase();
-  const [subjects, units] = await Promise.all([
+  const unitsQuery = (columns: string) => sb.from("units").select(columns).order("position").order("name");
+  const [subjects, withRounds] = await Promise.all([
     sb.from("subjects").select("id,name,position").order("position").order("name"),
-    sb.from("units").select("id,subject_id,name,position").order("position").order("name"),
+    unitsQuery("id,subject_id,name,position,rounds,round_started_at"),
   ]);
-  return { subjects: check(subjects, "subjects") ?? [], units: check(units, "units") ?? [] };
+  // Before migration 0002 the round columns don't exist yet; fall back to the basic columns.
+  const units = withRounds.error ? await unitsQuery("id,subject_id,name,position") : withRounds;
+  return { subjects: check(subjects, "subjects") ?? [], units: (check(units, "units") ?? []) as unknown as UnitRow[] };
+}
+
+/** Per unit in a round: how many of its cards were reviewed since the round started. */
+async function loadRoundProgress(units: UnitRow[]): Promise<Map<string, number>> {
+  const done = new Map<string, number>();
+  const inRound = units.filter((u) => u.round_started_at);
+  if (!inRound.length) return done;
+  const start = new Map(inRound.map((u) => [u.id, u.round_started_at!]));
+  const earliest = [...start.values()].sort()[0];
+  const sb = getSupabase();
+  const rows = await fetchAll<{ unit_id: string; last_review: string }>("round progress", (from, to) =>
+    sb.from("cards").select("unit_id,last_review").in("unit_id", [...start.keys()]).gte("last_review", earliest).eq("suspended", false).order("id").range(from, to),
+  );
+  for (const r of rows) if (new Date(r.last_review) >= new Date(start.get(r.unit_id)!)) done.set(r.unit_id, (done.get(r.unit_id) ?? 0) + 1);
+  return done;
+}
+
+/** Starts a new round: every reviewed card of these units is due again now (memory history stays), and each unit counts one more round. */
+export async function startRound(units: UnitRow[]): Promise<void> {
+  if (!units.length) return;
+  const sb = getSupabase();
+  const now = new Date().toISOString();
+  for (const u of units) {
+    const res = await sb.from("units").update({ rounds: (u.rounds ?? 0) + 1, round_started_at: now }).eq("id", u.id);
+    if (res.error) {
+      if (/rounds|round_started_at/.test(res.error.message))
+        throw new Error("Rounds need a one-time database update first: run supabase/migrations/0002_rounds.sql in the Supabase SQL editor.");
+      throw new Error(`Couldn't start the round: ${res.error.message}`);
+    }
+  }
+  const cards = await sb.from("cards").update({ due: now }).in("unit_id", units.map((u) => u.id)).eq("state", State.Review);
+  if (cards.error) throw new Error(`Couldn't make the cards due: ${cards.error.message}`);
 }
 
 async function loadToday(dayStart: Date): Promise<Map<string | null, TodayCounts>> {
@@ -115,6 +150,8 @@ export interface Overview {
   tags: Map<string, TagCounts[]>;
   /** Section tags (midterm, final…): per tag, the counts of its cards in each unit. */
   sections: Map<string, Map<string, UnitCounts>>;
+  /** Units in a round: cards reviewed since the round started. */
+  roundDone: Map<string, number>;
   newLeft: Map<string, number>;
   /** New cards still allowed today, all subjects together. */
   newLeftTotal: number;
@@ -145,6 +182,7 @@ export async function loadOverview(now = new Date()): Promise<Overview> {
     counts: new Map(counts.map((c) => [c.unit_id, c])),
     tags,
     sections: await loadSections([...new Set(tagRows.map((t) => t.tag).filter(isSectionTag))], end),
+    roundDone: await loadRoundProgress(tree.units),
     newLeft: remainingNew(tree.subjects, today, settings),
     newLeftTotal: totalNewLeft(today, settings),
     reviewedToday,
