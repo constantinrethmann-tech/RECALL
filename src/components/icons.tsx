@@ -100,3 +100,9 @@ export const Target = (p: SVGProps<SVGSVGElement>) => (
     <circle cx="12" cy="12" r="0.8" fill="currentColor" />
   </Icon>
 );
+
+export const Folder = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </Icon>
+);

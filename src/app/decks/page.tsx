@@ -66,7 +66,7 @@ function Decks() {
                         <EditableRow
                           kind="unit"
                           name={u.name}
-                          detail={u.rounds ? `${cardsLabel(n)} · round ${u.rounds + 1}` : cardsLabel(n)}
+                          detail={[cardsLabel(n), u.rounds ? `round ${u.rounds + 1}` : null, u.group_name].filter(Boolean).join(" · ")}
                           deleteWarning={n ? `Delete “${u.name}” with its ${cardsLabel(n)}?` : `Delete “${u.name}”?`}
                           roundWarning={`Start a new round for “${u.name}”? Its ${cardsLabel(n)} become new again; your review history stays.`}
                           onRound={n ? () => startRound([u]).then(reload) : undefined}

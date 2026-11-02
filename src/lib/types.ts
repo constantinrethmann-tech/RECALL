@@ -15,6 +15,8 @@ export interface UnitRow {
   /** How many "new rounds" were started (0 before the first). Missing until migration 0002 has run. */
   rounds?: number;
   round_started_at?: string | null;
+  /** Named group (e.g. "Midterm 1"): folded under the subject and left out of normal study. Missing until migration 0003 has run. */
+  group_name?: string | null;
 }
 
 /** The FSRS columns of a card row, as they come from the database. */
@@ -121,6 +123,8 @@ export interface TodayCounts {
 export interface Scope {
   subjectId?: string;
   unitId?: string;
+  /** All units of this group (within subjectId). */
+  group?: string;
   tag?: string;
   trouble?: boolean;
 }

@@ -63,12 +63,11 @@ export async function saveSettings(settings: Settings): Promise<void> {
 export async function loadTree(): Promise<{ subjects: SubjectRow[]; units: UnitRow[] }> {
   const sb = getSupabase();
   const unitsQuery = (columns: string) => sb.from("units").select(columns).order("position").order("name");
-  const [subjects, withRounds] = await Promise.all([
-    sb.from("subjects").select("id,name,position").order("position").order("name"),
-    unitsQuery("id,subject_id,name,position,rounds,round_started_at"),
-  ]);
-  // Before migration 0002 the round columns don't exist yet; fall back to the basic columns.
-  const units = withRounds.error ? await unitsQuery("id,subject_id,name,position") : withRounds;
+  const subjects = await sb.from("subjects").select("id,name,position").order("position").order("name");
+  // Columns from later migrations may not exist yet; fall back to the older column lists.
+  let units = await unitsQuery("id,subject_id,name,position,rounds,round_started_at,group_name");
+  if (units.error) units = await unitsQuery("id,subject_id,name,position,rounds,round_started_at");
+  if (units.error) units = await unitsQuery("id,subject_id,name,position");
   return { subjects: check(subjects, "subjects") ?? [], units: (check(units, "units") ?? []) as unknown as UnitRow[] };
 }
 
@@ -263,12 +262,18 @@ export interface StudyLoad {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CardQuery = any;
 
-/** Adds the selection's filters (subject, unit, tag, trouble) to a cards query. */
-function filtered(q: CardQuery, scope: Scope): CardQuery {
+/** Adds the selection's filters (subject, unit, group, tag, trouble) to a cards query. Grouped units only come up when picked on purpose. */
+function filtered(q: CardQuery, scope: Scope, units: UnitRow[]): CardQuery {
   const match: Record<string, string> = {};
   if (scope.subjectId) match.subject_id = scope.subjectId;
   if (scope.unitId) match.unit_id = scope.unitId;
   let out = Object.keys(match).length ? q.match(match) : q;
+  const grouped = units.filter((u) => u.group_name);
+  if (scope.group) {
+    out = out.in("unit_id", grouped.filter((u) => u.group_name === scope.group && (!scope.subjectId || u.subject_id === scope.subjectId)).map((u) => u.id));
+  } else if (!scope.unitId && !scope.tag && grouped.length) {
+    out = out.not("unit_id", "in", `(${grouped.map((u) => u.id).join(",")})`);
+  }
   if (scope.tag) out = out.contains("tags", [scope.tag]);
   if (scope.trouble) out = out.neq("state", State.New).or("lapses.gte.2,difficulty.gte.7.5");
   return out;
@@ -280,7 +285,7 @@ export function scopeTitle(scope: Scope, subjects: Map<string, SubjectRow>, unit
     : scope.subjectId
       ? (subjects.get(scope.subjectId)?.name ?? "Subject")
       : "All subjects";
-  const extras = [scope.tag && tagLabel(scope.tag), scope.trouble && "Trouble cards"].filter(Boolean);
+  const extras = [scope.group, scope.tag && tagLabel(scope.tag), scope.trouble && "Trouble cards"].filter(Boolean);
   return [base, ...extras].join(" · ");
 }
 
@@ -327,13 +332,13 @@ export async function loadStudy(scope: Scope, mode: StudyMode, now = new Date())
 
   if (mode === "cram") {
     const rows = await fetchAll<CardRow>("cards", (from, to) =>
-      filtered(sb.from("cards").select(CARD_COLUMNS), scope).eq("suspended", false).order("id").range(from, to),
+      filtered(sb.from("cards").select(CARD_COLUMNS), scope, tree.units).eq("suspended", false).order("id").range(from, to),
     );
     return { ...base, title: `Cram · ${scopeTitle(scope, subjects, units)}`, plan: { learning: [], main: shuffle(rows.map(rowToStudyCard)) } };
   }
 
   const dueRows = await fetchAll<CardRow>("due cards", (from, to) =>
-    filtered(sb.from("cards").select(CARD_COLUMNS), scope)
+    filtered(sb.from("cards").select(CARD_COLUMNS), scope, tree.units)
       .neq("state", State.New)
       .lt("due", end.toISOString())
       .eq("suspended", false)
@@ -344,7 +349,7 @@ export async function loadStudy(scope: Scope, mode: StudyMode, now = new Date())
   let freshRows: CardRow[] = [];
   if (!scope.trouble) {
     const candidates = await fetchAll<{ id: string; subject_id: string; unit_id: string; position: number }>("new cards", (from, to) =>
-      filtered(sb.from("cards").select("id,subject_id,unit_id,position"), scope)
+      filtered(sb.from("cards").select("id,subject_id,unit_id,position"), scope, tree.units)
         .eq("state", State.New)
         .eq("suspended", false)
         .order("id")

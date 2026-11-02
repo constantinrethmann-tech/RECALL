@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { loadOverview, type Overview } from "@/lib/data";
 import { sameScope, studyHref } from "@/lib/scope";
 import { getSupabase } from "@/lib/supabase";
 import { isSectionTag, sortTags, tagLabel } from "@/lib/tags";
-import type { Scope, StudyMode, TagCounts, UnitRow } from "@/lib/types";
-import { Chevron, Flame, Pencil, Play, Target } from "./icons";
+import type { Scope, StudyMode, TagCounts, UnitCounts, UnitRow } from "@/lib/types";
+import { Chevron, Flame, Folder, Pencil, Play, Target } from "./icons";
 import { ButtonLink, Counts } from "./ui";
 
 /** Overview data that refreshes when the app comes back into view and when cards change on another device. */
@@ -63,7 +63,8 @@ export interface Totals {
 export function subjectTotals(data: Overview, subjectId: string): Totals {
   const t: Totals = { fresh: 0, learning: 0, due: 0, total: 0, seen: 0, trouble: 0 };
   for (const u of data.units) {
-    if (u.subject_id !== subjectId) continue;
+    // Grouped units (e.g. "Midterm 1") stay out of the subject's totals.
+    if (u.subject_id !== subjectId || u.group_name) continue;
     const c = data.counts.get(u.id);
     if (!c) continue;
     t.fresh += c.new_count;
@@ -180,6 +181,39 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
           if (parent) codeUnitOf.set(parent.id, u);
         }
         const children = new Set([...codeUnitOf.values()].map((u) => u.id));
+        // Units in a group ("Midterm 1") live in their own folded block.
+        const groups = [...new Set(units.flatMap((u) => (u.group_name ? [u.group_name] : [])))];
+        const foldBlock = (b: { fold: string; icon: ReactNode; label: string; total: number; fresh: number; learning: number; due: number; play: Scope; open: boolean; children: ReactNode }) => {
+          const blockOpen = openSections.has(b.fold) || b.open;
+          return (
+            <div key={b.fold} className="mx-1 mt-2 rounded-2xl border border-ion/25 bg-hull/60">
+              <div className={`flex items-center gap-2 rounded-2xl py-1 pl-1 pr-1 ${sameScope(active, b.play) ? "bg-hull-2" : ""}`}>
+                <button
+                  type="button"
+                  onClick={() => toggleSection(b.fold)}
+                  aria-expanded={blockOpen}
+                  title={blockOpen ? `Fold ${b.label}` : `Show ${b.label}`}
+                  className="group flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-xl pl-1.5 text-left"
+                >
+                  <Chevron width={15} height={15} className={`shrink-0 text-dust transition-transform duration-200 group-hover:text-ion ${blockOpen ? "rotate-90" : ""}`} />
+                  {b.icon}
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-frost">{b.label}</span>
+                  <span className="font-mono text-[10.5px] text-dust">{b.total} cards</span>
+                </button>
+                {cram ? <span className="font-mono text-[12px] text-ion">{b.total}</span> : <Counts fresh={b.fresh} learning={b.learning} due={b.due} />}
+                <Link
+                  href={studyHref(b.play, mode)}
+                  aria-label={`${cram ? "Cram" : "Study"} all ${b.label} cards of ${s.name}`}
+                  title={`${cram ? "Cram" : "Study"} all ${b.label} cards`}
+                  className="ml-1 grid h-10 w-10 place-items-center rounded-full border border-seam-2 text-ion transition-colors hover:border-ion/50 hover:bg-hull-2"
+                >
+                  <Play width={16} height={16} />
+                </Link>
+              </div>
+              {blockOpen && <div className="animate-[fadeIn_.2s_ease-out] space-y-0.5 px-1 pb-1.5">{b.children}</div>}
+            </div>
+          );
+        };
         const unitLink = (u: UnitRow, label: string, code = false, tag?: string) => {
           const c = tag ? data.sections.get(tag)!.get(u.id)! : data.counts.get(u.id)!;
           const scope: Scope = tag ? { unitId: u.id, tag } : { unitId: u.id };
@@ -245,55 +279,29 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
 
             {isOpen &&
               sections.map((t) => {
-                const key = `${s.id}:${t.tag}`;
                 const sectionUnits = units.filter((u) => data.sections.get(t.tag)?.has(u.id));
-                const sectionOpen = openSections.has(key) || sectionUnits.some((u) => sameScope(active, { unitId: u.id, tag: t.tag }));
-                return (
-                  <div key={t.tag} className="mx-1 mt-2 rounded-2xl border border-ion/25 bg-hull/60">
-                    <div className={`flex items-center gap-2 rounded-2xl py-1 pl-1 pr-1 ${sameScope(active, { subjectId: s.id, tag: t.tag }) ? "bg-hull-2" : ""}`}>
-                      <button
-                        type="button"
-                        onClick={() => toggleSection(key)}
-                        aria-expanded={sectionOpen}
-                        title={sectionOpen ? `Fold ${tagLabel(t.tag)}` : `Show ${tagLabel(t.tag)} topics`}
-                        className="group flex min-h-12 min-w-0 flex-1 items-center gap-2 rounded-xl pl-1.5 text-left"
-                      >
-                        <Chevron width={15} height={15} className={`shrink-0 text-dust transition-transform duration-200 group-hover:text-ion ${sectionOpen ? "rotate-90" : ""}`} />
-                        <Target width={16} height={16} className="shrink-0 text-ion" />
-                        <span className="min-w-0 flex-1 truncate text-[14px] text-frost">{tagLabel(t.tag)}</span>
-                        <span className="font-mono text-[10.5px] text-dust">{t.total} cards</span>
-                      </button>
-                      {cram ? (
-                        <span className="font-mono text-[12px] text-ion">{t.total}</span>
-                      ) : (
-                        <Counts fresh={Math.min(t.new_count, newLeft)} learning={t.learning_count} due={t.due_count} />
-                      )}
-                      <Link
-                        href={studyHref({ subjectId: s.id, tag: t.tag }, mode)}
-                        aria-label={`${cram ? "Cram" : "Study"} all ${tagLabel(t.tag)} cards of ${s.name}`}
-                        title={`${cram ? "Cram" : "Study"} all ${tagLabel(t.tag)} cards`}
-                        className="ml-1 grid h-10 w-10 place-items-center rounded-full border border-seam-2 text-ion transition-colors hover:border-ion/50 hover:bg-hull-2"
-                      >
-                        <Play width={16} height={16} />
-                      </Link>
+                return foldBlock({
+                  fold: `${s.id}:${t.tag}`,
+                  icon: <Target width={16} height={16} className="shrink-0 text-ion" />,
+                  label: tagLabel(t.tag),
+                  total: t.total,
+                  fresh: Math.min(t.new_count, newLeft),
+                  learning: t.learning_count,
+                  due: t.due_count,
+                  play: { subjectId: s.id, tag: t.tag },
+                  open: sectionUnits.some((u) => sameScope(active, { unitId: u.id, tag: t.tag })),
+                  children: sectionUnits.map((u) => (
+                    <div key={u.id} className="flex">
+                      {unitLink(u, u.name, false, t.tag)}
                     </div>
-                    {sectionOpen && (
-                      <div className="animate-[fadeIn_.2s_ease-out] space-y-0.5 px-1 pb-1.5">
-                        {sectionUnits.map((u) => (
-                          <div key={u.id} className="flex">
-                            {unitLink(u, u.name, false, t.tag)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
+                  )),
+                });
               })}
 
             {isOpen && (
               <div className="mt-1.5 animate-[fadeIn_.2s_ease-out] space-y-0.5">
                 {units
-                  .filter((u) => !children.has(u.id))
+                  .filter((u) => !children.has(u.id) && !u.group_name)
                   .map((u) => {
                     const codeUnit = codeUnitOf.get(u.id);
                     if (!codeUnit) return <div key={u.id} className="flex">{unitLink(u, u.name)}</div>;
@@ -319,6 +327,28 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
                   })}
               </div>
             )}
+
+            {isOpen &&
+              groups.map((g) => {
+                const groupUnits = units.filter((u) => u.group_name === g);
+                const sum = (pick: (c: UnitCounts) => number) => groupUnits.reduce((n, u) => n + pick(data.counts.get(u.id)!), 0);
+                return foldBlock({
+                  fold: `${s.id}:group:${g}`,
+                  icon: <Folder width={16} height={16} className="shrink-0 text-ion" />,
+                  label: g,
+                  total: sum((c) => c.total),
+                  fresh: Math.min(sum((c) => c.new_count), newLeft),
+                  learning: sum((c) => c.learning_count),
+                  due: sum((c) => c.due_count),
+                  play: { subjectId: s.id, group: g },
+                  open: groupUnits.some((u) => sameScope(active, { unitId: u.id })),
+                  children: groupUnits.map((u) => (
+                    <div key={u.id} className="flex">
+                      {unitLink(u, u.name)}
+                    </div>
+                  )),
+                });
+              })}
 
             {isOpen && (tags.length > 0 || st.trouble > 0) && (
               <div className="mt-3 flex flex-wrap gap-2 px-3">
