@@ -12,7 +12,11 @@ export interface PythonJob {
 
 export class PythonTimeout extends Error {}
 
-type Handler = (results: RunResult[]) => void;
+interface Handler {
+  /** Libraries are loaded and the code starts running (the time limit starts now). */
+  started: () => void;
+  done: (results: RunResult[]) => void;
+}
 
 let worker: Worker | null = null;
 let ready: Promise<void> | null = null;
@@ -27,7 +31,8 @@ function start(): Promise<void> {
       const data = e.data as { type: string; id?: number; results?: RunResult[]; error?: string };
       if (data.type === "ready") resolve();
       else if (data.type === "failed") reject(new Error(`Python couldn't start: ${data.error}`));
-      else if (data.type === "result" && data.id !== undefined) handlers.get(data.id)?.(data.results ?? []);
+      else if (data.type === "started" && data.id !== undefined) handlers.get(data.id)?.started();
+      else if (data.type === "result" && data.id !== undefined) handlers.get(data.id)?.done(data.results ?? []);
     };
     w.onerror = () => reject(new Error("Python couldn't be loaded. Check your internet connection (it's downloaded once)."));
   });
@@ -58,15 +63,26 @@ export async function runPython(jobs: PythonJob[], timeoutMs = 5000): Promise<Ru
   const w = worker!;
   return new Promise<RunResult[]>((resolve, reject) => {
     const id = ++seq;
-    const timer = setTimeout(() => {
+    const fail = (error: Error) => {
       handlers.delete(id);
       stop();
-      reject(new PythonTimeout("Your code ran for more than 5 seconds, so it was stopped. Probably an endless loop."));
-    }, timeoutMs);
-    handlers.set(id, (results) => {
-      clearTimeout(timer);
-      handlers.delete(id);
-      resolve(results);
+      reject(error);
+    };
+    // Downloading a library (pandas) the first time can take a while; after that the normal limit applies.
+    let timer = setTimeout(() => fail(new Error("Loading the Python libraries took too long. Check your internet connection.")), 60000);
+    handlers.set(id, {
+      started: () => {
+        clearTimeout(timer);
+        timer = setTimeout(
+          () => fail(new PythonTimeout("Your code ran for more than 5 seconds, so it was stopped. Probably an endless loop.")),
+          timeoutMs,
+        );
+      },
+      done: (results) => {
+        clearTimeout(timer);
+        handlers.delete(id);
+        resolve(results);
+      },
     });
     w.postMessage({ id, jobs });
   });

@@ -66,6 +66,17 @@ ready.then(
 self.onmessage = async (event) => {
   const { id, jobs } = event.data;
   const py = await ready;
+  // Libraries like pandas are downloaded the first time a drill imports them; that doesn't count as run time.
+  const source = jobs.map((job) => `${job.setup}\n${job.code}`).join("\n");
+  try {
+    await py.loadPackagesFromImports(source);
+    // The first `import pandas` alone takes seconds; do it now so it isn't counted either.
+    const imports = source.split("\n").filter((line) => /^(import|from)\s/.test(line));
+    if (imports.length) py.runPython(imports.join("\n"), { globals: py.toPy({}) });
+  } catch {
+    // Not available: the import itself will show the error.
+  }
+  postMessage({ type: "started", id });
   const run = py.globals.get("__recall_run");
   const results = jobs.map((job) => {
     const res = run(job.setup, job.code, py.toPy(job.inputs || []), py.toPy(job.names || []));
