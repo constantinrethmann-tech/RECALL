@@ -125,6 +125,8 @@ export interface Scope {
   unitId?: string;
   /** All units of this group (within subjectId). */
   group?: string;
+  /** One section of unitId (the cards' "section" field). */
+  section?: string;
   tag?: string;
   trouble?: boolean;
 }

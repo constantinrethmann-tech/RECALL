@@ -165,6 +165,8 @@ export interface Overview {
   tags: Map<string, TagCounts[]>;
   /** Section tags (midterm, final…): per tag, the counts of its cards in each unit. */
   sections: Map<string, Map<string, UnitCounts>>;
+  /** Per unit: its sections in card order, with counts (shown when the unit is unfolded). */
+  unitSections: Map<string, { name: string; counts: UnitCounts }[]>;
   /** Units in a round: cards reviewed since the round started. */
   roundDone: Map<string, number>;
   newLeft: Map<string, number>;
@@ -197,6 +199,7 @@ export async function loadOverview(now = new Date()): Promise<Overview> {
     counts: new Map(counts.map((c) => [c.unit_id, c])),
     tags,
     sections: await loadSections([...new Set(tagRows.map((t) => t.tag).filter(isSectionTag))], end),
+    unitSections: await loadUnitSections(end),
     roundDone: await loadRoundProgress(tree.units),
     newLeft: remainingNew(tree.subjects, today, settings),
     newLeftTotal: totalNewLeft(today, settings),
@@ -227,16 +230,43 @@ async function loadSections(sectionTags: string[], dayEnd: Date): Promise<Map<st
     for (const tag of r.tags.filter((t) => sectionTags.includes(t))) {
       const units = sections.get(tag) ?? new Map<string, UnitCounts>();
       sections.set(tag, units);
-      const c = units.get(r.unit_id) ?? { unit_id: r.unit_id, total: 0, new_count: 0, learning_count: 0, due_count: 0, seen_count: 0, trouble_count: 0 };
+      const c = units.get(r.unit_id) ?? emptyCounts(r.unit_id);
       units.set(r.unit_id, c);
-      c.total++;
-      if (r.state === State.New) c.new_count++;
-      else c.seen_count++;
-      if (r.state === State.Learning || r.state === State.Relearning) c.learning_count++;
-      if (r.state === State.Review && new Date(r.due) < dayEnd) c.due_count++;
-      if (r.state !== State.New && (r.lapses >= 2 || r.difficulty >= 7.5)) c.trouble_count++;
+      countCard(c, r, dayEnd);
     }
   return sections;
+}
+
+const emptyCounts = (unitId: string): UnitCounts => ({ unit_id: unitId, total: 0, new_count: 0, learning_count: 0, due_count: 0, seen_count: 0, trouble_count: 0 });
+
+/** Adds one card to the counts, the same way unit_counts does. */
+function countCard(c: UnitCounts, r: { state: number; due: string; lapses: number; difficulty: number }, dayEnd: Date) {
+  c.total++;
+  if (r.state === State.New) c.new_count++;
+  else c.seen_count++;
+  if (r.state === State.Learning || r.state === State.Relearning) c.learning_count++;
+  if (r.state === State.Review && new Date(r.due) < dayEnd) c.due_count++;
+  if (r.state !== State.New && (r.lapses >= 2 || r.difficulty >= 7.5)) c.trouble_count++;
+}
+
+/** Per unit: the sections of its cards (in the order the cards come), each with its counts. Cards without a section are left out. */
+async function loadUnitSections(dayEnd: Date): Promise<Map<string, { name: string; counts: UnitCounts }[]>> {
+  const sb = getSupabase();
+  const rows = await fetchAll<{ unit_id: string; section: string | null; position: number; state: number; due: string; lapses: number; difficulty: number }>("sections", (from, to) =>
+    sb.from("cards").select("unit_id,section,position,state,due,lapses,difficulty").not("section", "is", null).eq("suspended", false).order("id").range(from, to),
+  );
+  const byUnit = new Map<string, Map<string, { name: string; first: number; counts: UnitCounts }>>();
+  for (const r of rows) {
+    const sections = byUnit.get(r.unit_id) ?? new Map();
+    byUnit.set(r.unit_id, sections);
+    const s = sections.get(r.section!) ?? { name: r.section!, first: r.position, counts: emptyCounts(r.unit_id) };
+    sections.set(r.section!, s);
+    s.first = Math.min(s.first, r.position);
+    countCard(s.counts, r, dayEnd);
+  }
+  return new Map(
+    [...byUnit].map(([unitId, sections]) => [unitId, [...sections.values()].sort((a, b) => a.first - b.first).map(({ name, counts }) => ({ name, counts }))]),
+  );
 }
 
 // ─── Study session ───────────────────────────────────────────────────────────
@@ -274,6 +304,7 @@ function filtered(q: CardQuery, scope: Scope, units: UnitRow[]): CardQuery {
   } else if (!scope.unitId && !scope.tag && grouped.length) {
     out = out.not("unit_id", "in", `(${grouped.map((u) => u.id).join(",")})`);
   }
+  if (scope.section) out = out.eq("section", scope.section);
   if (scope.tag) out = out.contains("tags", [scope.tag]);
   if (scope.trouble) out = out.neq("state", State.New).or("lapses.gte.2,difficulty.gte.7.5");
   return out;
@@ -285,7 +316,7 @@ export function scopeTitle(scope: Scope, subjects: Map<string, SubjectRow>, unit
     : scope.subjectId
       ? (subjects.get(scope.subjectId)?.name ?? "Subject")
       : "All subjects";
-  const extras = [scope.group, scope.tag && tagLabel(scope.tag), scope.trouble && "Trouble cards"].filter(Boolean);
+  const extras = [scope.group, scope.section, scope.tag && tagLabel(scope.tag), scope.trouble && "Trouble cards"].filter(Boolean);
   return [base, ...extras].join(" · ");
 }
 

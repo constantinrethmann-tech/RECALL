@@ -214,11 +214,11 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
             </div>
           );
         };
-        const unitLink = (u: UnitRow, label: string, code = false, tag?: string) => {
-          const c = tag ? data.sections.get(tag)!.get(u.id)! : data.counts.get(u.id)!;
-          const scope: Scope = tag ? { unitId: u.id, tag } : { unitId: u.id };
+        const unitLink = (u: UnitRow, label: string, code = false, tag?: string, section?: { name: string; counts: UnitCounts }) => {
+          const c = section ? section.counts : tag ? data.sections.get(tag)!.get(u.id)! : data.counts.get(u.id)!;
+          const scope: Scope = section ? { unitId: u.id, section: section.name } : tag ? { unitId: u.id, tag } : { unitId: u.id };
           // In a round: 100 % per finished round plus this round's share (bar = this round only).
-          const rounds = tag ? 0 : (u.rounds ?? 0);
+          const rounds = tag || section ? 0 : (u.rounds ?? 0);
           const share = rounds ? Math.min(1, (data.roundDone.get(u.id) ?? 0) / (c.total || 1)) : c.total ? c.seen_count / c.total : 0;
           const pct = Math.round(share * 100);
           const shown = rounds * 100 + pct;
@@ -228,7 +228,7 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
               className={`flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-hull-2 ${sameScope(active, scope) ? "bg-hull-2" : ""}`}
             >
               <div className="min-w-0 flex-1">
-                <p className={`flex items-center gap-2 truncate text-[14px] ${code ? "text-mist" : "text-frost"}`}>
+                <p className={`flex items-center gap-2 truncate ${section ? "text-[13.5px]" : "text-[14px]"} ${code || section ? "text-mist" : "text-frost"}`}>
                   {code && <Pencil width={14} height={14} className="shrink-0 text-ion" />}
                   {label}
                 </p>
@@ -247,6 +247,46 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
                 <Counts fresh={Math.min(c.new_count, newLeft)} learning={c.learning_count} due={c.due_count} />
               )}
             </Link>
+          );
+        };
+        // A unit folds out into its sections (two or more) and its code exercises; tapping the unit itself studies all of it.
+        const unitRow = (u: UnitRow) => {
+          const codeUnit = codeUnitOf.get(u.id);
+          const secs = data.unitSections.get(u.id) ?? [];
+          const showSecs = secs.length >= 2;
+          if (!codeUnit && !showSecs) return <div key={u.id} className="flex">{unitLink(u, u.name)}</div>;
+          const unitOpen =
+            openUnits.has(u.id) ||
+            (!!codeUnit && sameScope(active, { unitId: codeUnit.id })) ||
+            secs.some((x) => sameScope(active, { unitId: u.id, section: x.name }));
+          const what = showSecs ? "sections" : "code exercises";
+          return (
+            <div key={u.id}>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => toggleUnit(u.id)}
+                  aria-expanded={unitOpen}
+                  aria-label={unitOpen ? `Hide ${what} of ${u.name}` : `Show ${what} of ${u.name}`}
+                  title={unitOpen ? `Hide ${what}` : `Show ${what}`}
+                  className="grid h-11 w-7 shrink-0 place-items-center rounded-lg text-dust transition-colors hover:text-ion"
+                >
+                  <Chevron width={15} height={15} className={`transition-transform duration-200 ${unitOpen ? "rotate-90" : ""}`} />
+                </button>
+                {unitLink(u, u.name)}
+              </div>
+              {unitOpen && (
+                <div className="animate-[fadeIn_.2s_ease-out] space-y-0.5 pl-7">
+                  {showSecs &&
+                    secs.map((x) => (
+                      <div key={x.name} className="flex">
+                        {unitLink(u, x.name, false, undefined, x)}
+                      </div>
+                    ))}
+                  {codeUnit && <div className="flex">{unitLink(codeUnit, "Write code", true)}</div>}
+                </div>
+              )}
+            </div>
           );
         };
         return (
@@ -302,29 +342,7 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
               <div className="mt-1.5 animate-[fadeIn_.2s_ease-out] space-y-0.5">
                 {units
                   .filter((u) => !children.has(u.id) && !u.group_name)
-                  .map((u) => {
-                    const codeUnit = codeUnitOf.get(u.id);
-                    if (!codeUnit) return <div key={u.id} className="flex">{unitLink(u, u.name)}</div>;
-                    const unitOpen = openUnits.has(u.id) || sameScope(active, { unitId: codeUnit.id });
-                    return (
-                      <div key={u.id}>
-                        <div className="flex items-center">
-                          <button
-                            type="button"
-                            onClick={() => toggleUnit(u.id)}
-                            aria-expanded={unitOpen}
-                            aria-label={unitOpen ? `Hide code exercises for ${u.name}` : `Show code exercises for ${u.name}`}
-                            title={unitOpen ? "Hide code exercises" : "Show code exercises"}
-                            className="grid h-11 w-7 shrink-0 place-items-center rounded-lg text-dust transition-colors hover:text-ion"
-                          >
-                            <Chevron width={15} height={15} className={`transition-transform duration-200 ${unitOpen ? "rotate-90" : ""}`} />
-                          </button>
-                          {unitLink(u, u.name)}
-                        </div>
-                        {unitOpen && <div className="flex animate-[fadeIn_.2s_ease-out] pl-7">{unitLink(codeUnit, "Write code", true)}</div>}
-                      </div>
-                    );
-                  })}
+                  .map(unitRow)}
               </div>
             )}
 
@@ -341,12 +359,8 @@ export function OverviewList({ data, active, mode }: { data: Overview; active?: 
                   learning: sum((c) => c.learning_count),
                   due: sum((c) => c.due_count),
                   play: { subjectId: s.id, group: g },
-                  open: groupUnits.some((u) => sameScope(active, { unitId: u.id })),
-                  children: groupUnits.map((u) => (
-                    <div key={u.id} className="flex">
-                      {unitLink(u, u.name)}
-                    </div>
-                  )),
+                  open: groupUnits.some((u) => active?.unitId === u.id),
+                  children: groupUnits.map(unitRow),
                 });
               })}
 
